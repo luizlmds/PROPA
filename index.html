@@ -138,18 +138,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     display:none;background:#fdecea;border:1px solid #f5c6c3;color:#a94442;
     border-radius:2px;padding:7px 10px;font-size:11.5px;margin-bottom:14px;
   }
-  .amb-conn-status{
-    font-size:11px;border-radius:2px;padding:6px 9px;margin-bottom:6px;
-    background:#f0f0f0;color:#777;word-break:break-word;
-  }
-  .amb-conn-status.ok{background:#eaf6ec;color:#2b7a3b;border:1px solid #c9e8ce;}
-  .amb-conn-status.err{background:#fdecea;color:#a94442;border:1px solid #f5c6c3;}
-  .amb-conn-testar{
-    font-size:11px;color:var(--azul-link);cursor:pointer;text-align:right;
-    margin-bottom:12px;
-  }
-  .amb-conn-testar:hover{text-decoration:underline;}
-
   /* ===== Lista de ambientes (dentro do diálogo de lookup) ===== */
   .amb-list{display:flex;flex-direction:column;gap:8px;}
   .amb-opt{
@@ -312,10 +300,11 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   #toast{
     position:fixed;right:18px;bottom:18px;background:#333;color:#fff;padding:10px 16px;
     border-radius:3px;font-size:12.5px;z-index:99;display:none;box-shadow:0 4px 14px rgba(0,0,0,.3);
+    max-width:480px;word-break:break-word;
   }
   #toast.err{background:#b03a33;}
 
-  /* ===== Rotina: Funcionários (integração Ahgora) ===== */
+  /* ===== Rotina: Funcionários ===== */
   #view-funcionarios{display:none;flex-direction:column;flex:1;overflow:hidden;}
   #view-rescisao{display:none;flex-direction:column;flex:1;overflow:hidden;}
   #view-solicpag{display:none;flex-direction:column;flex:1;overflow:hidden;}
@@ -677,7 +666,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
      (ajuda a diagnosticar quando uma cópia antiga do arquivo é reaberta por engano). -->
 <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#222;color:#fff;
   font:11px/1.4 -apple-system,Segoe UI,Arial,sans-serif;text-align:center;padding:3px 6px;">
-  Portal DP — build 2026-08-19-06 (política de exclusão corrigida)
+  Portal DP — build 2026-08-19-08 (corrige datas BR → ISO na importação)
 </div>
 <div style="height:22px;"></div>
 
@@ -690,9 +679,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     </div>
     <div class="amb-sub">Portal de Sistemas</div>
     <div class="amb-welcome">Boas-vindas, <b id="amb-user-name">Luiz Maciel</b>.</div>
-
-    <div class="amb-conn-status" id="amb-conn-status">Conectando ao Supabase&hellip;</div>
-    <div class="amb-conn-testar" id="amb-conn-testar" onclick="dpTestarConexao()">&#8635; Testar conexão com o Supabase</div>
 
     <div class="amb-msg" id="amb-msg"></div>
 
@@ -810,8 +796,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             <h1>Funcionários</h1>
           </div>
           <div class="flex"></div>
-          <button class="btn" onclick="abrirConfigAhgora()">&#9881; Configurar Conexão Ahgora</button>
-          <button class="btn primary" id="btn-buscar-ahgora" onclick="buscarColaboradoresAhgora()">&#8635; Buscar do Ahgora</button>
           <button class="btn" onclick="voltarHome()">Voltar</button>
         </div>
         <div class="filtro-bar" id="func-filtro-bar" style="display:none;">
@@ -827,7 +811,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         <div class="func-wrap">
           <div id="func-empty" class="func-empty">
             Nenhum colaborador carregado ainda.<br>
-            Clique em <b>Buscar do Ahgora</b> para importar o cadastro (é necessário configurar a conexão na primeira vez).
+            Importe a planilha em <b>Miscelânia &gt; Importação de Ativo</b> para cadastrar os colaboradores.
           </div>
           <table class="func" id="func-table" style="display:none;">
             <thead>
@@ -876,8 +860,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
         <div class="func-wrap">
           <div id="resc-empty" class="func-empty">
-            Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; Importação de Ativo (ou busque
-            do Ahgora) para liberar a rotina de Rescisão.
+            Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; Importação de Ativo
+            para liberar a rotina de Rescisão.
           </div>
           <table class="func" id="resc-table" style="display:none;">
             <thead>
@@ -1057,30 +1041,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
 <div id="viz-tooltip"></div>
 
-<!-- ==================== CONFIGURAR CONEXÃO AHGORA ==================== -->
-<div class="overlay" id="dlg-cfg-ahgora">
-  <div class="dlg" style="width:460px;">
-    <div class="dlg-title"><span class="flex">Configurar Conexão - Ahgora</span><span class="x" onclick="closeDlg('dlg-cfg-ahgora')">&#10005;</span></div>
-    <div class="dlg-body">
-      <div class="fld" style="margin-bottom:12px;">
-        <label style="display:block;font-size:11px;color:#666;margin-bottom:3px;">Usuário (client_id / M2M)</label>
-        <input type="text" id="cfg-ahgora-user" style="width:100%;border:1px solid #b8b8b8;border-radius:2px;height:28px;padding:0 8px;font-size:12.5px;">
-      </div>
-      <div class="fld" style="margin-bottom:6px;">
-        <label style="display:block;font-size:11px;color:#666;margin-bottom:3px;">Senha (client_secret)</label>
-        <input type="password" id="cfg-ahgora-pass" style="width:100%;border:1px solid #b8b8b8;border-radius:2px;height:28px;padding:0 8px;font-size:12.5px;">
-      </div>
-      <div class="cfg-note">
-        As credenciais ficam <b>somente na memória desta aba</b> enquanto o sistema estiver aberto — não são salvas no arquivo nem gravadas no navegador. Ao fechar ou recarregar a página, você precisará informá-las novamente.
-      </div>
-    </div>
-    <div class="dlg-foot" style="border-top:1px solid #d5d5d5;background:#ececec;padding:9px 12px;display:flex;justify-content:flex-end;gap:8px;">
-      <button class="btn" onclick="closeDlg('dlg-cfg-ahgora')">Cancelar</button>
-      <button class="btn primary" onclick="salvarConfigAhgora()">Salvar e Buscar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ==================== DETALHE DO COLABORADOR (FICHA COMPLETA) ==================== -->
 <div class="overlay" id="dlg-colab-detalhe">
   <div class="dlg" style="width:760px;">
@@ -1237,7 +1197,6 @@ var AMBIENTES = [
 
 var state = {
   ambiente: null,
-  ahgora: { usuario: '', senha: '' },
   colaboradores: [],   // cadastro unificado (carregado do Supabase ao abrir a página)
   importPreview: [],   // linhas lidas da planilha, aguardando confirmação
   pagamentosRealizados: {} // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
@@ -1280,27 +1239,64 @@ function dpLinhaParaColaborador(r){
   };
 }
 
+/* Converte uma data no formato brasileiro (DD/MM/AAAA, aceita 1 ou 2 dígitos
+   em dia/mês e ano com 2 ou 4 dígitos) — que é como o app guarda datas
+   internamente — para o formato ISO (AAAA-MM-DD) que as colunas "date" do
+   Postgres/Supabase exigem. Sem essa conversão o Supabase rejeitava a linha
+   inteira com o erro "date/time field value out of range" (código 22008).
+   Retorna null se a string estiver vazia, ausente ou não for reconhecida
+   como data válida — nunca lança erro nem envia lixo ao banco. */
+function dataBRParaISO(s){
+  if(s === null || s === undefined) return null;
+  var str = String(s).trim();
+  if(!str) return null;
+  var m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if(!m) return null;
+  var d = parseInt(m[1],10), mo = parseInt(m[2],10), y = parseInt(m[3],10);
+  if(y < 100) y += 2000;
+  if(mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return y + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
+
+/* Converte um valor numérico (salário, valor de MQP/férias) para number,
+   aceitando tanto number já pronto (caso comum, pois o SheetJS já lê células
+   numéricas da planilha como number) quanto texto no formato brasileiro
+   ("3.500,00") ou já em formato simples ("3500.5"). Retorna null se vazio,
+   ausente ou não for um número reconhecível — nunca envia texto para uma
+   coluna numeric do Supabase. */
+function numeroBRParaFloat(v){
+  if(v === null || v === undefined || v === '') return null;
+  if(typeof v === 'number') return isNaN(v) ? null : v;
+  var str = String(v).trim();
+  if(!str) return null;
+  if(/,/.test(str)){
+    str = str.replace(/\./g, '').replace(',', '.');
+  }
+  var n = parseFloat(str);
+  return isNaN(n) ? null : n;
+}
+
 function dpColaboradorParaLinha(p){
   return {
     matricula: p.matricula, nome: p.nome, cpf: p.cpf || null, rg: p.rg || null,
     ctps: p.ctps || null, serie_ctps: p.serieCtps || null, pis: p.pis || null,
-    sexo: p.sexo || null, data_nascimento: p.dataNascimento || null, nome_mae: p.nomeMae || null,
+    sexo: p.sexo || null, data_nascimento: dataBRParaISO(p.dataNascimento), nome_mae: p.nomeMae || null,
     municipio_nasc: p.municipioNasc || null, deficiente: !!p.deficiente,
     tipo_deficiencia: p.tipoDeficiencia || null, endereco: p.endereco || null,
     num_endereco: p.numEndereco || null, bairro: p.bairro || null, municipio: p.municipio || null,
     telefone: p.telefone || null, ddd_celular: p.dddCelular || null, num_celular: p.numCelular || null,
     filial: p.filial || null, centro_custo: p.centroCusto || null, cargo: p.cargo || null,
     funcao: p.funcao || null, cod_funcao: p.codFuncao || null, cbo: p.cbo || null,
-    data_admissao: p.dataAdmissao || null, data_demissao: p.dataDemissao || null,
-    salario_nominal: (p.salarioNominal === '' || p.salarioNominal === undefined) ? null : p.salarioNominal,
-    salario_base_dissidio: (p.salarioBaseDissidio === '' || p.salarioBaseDissidio === undefined) ? null : p.salarioBaseDissidio,
+    data_admissao: dataBRParaISO(p.dataAdmissao), data_demissao: dataBRParaISO(p.dataDemissao),
+    salario_nominal: numeroBRParaFloat(p.salarioNominal),
+    salario_base_dissidio: numeroBRParaFloat(p.salarioBaseDissidio),
     turno: p.turno || null, situacao_folha: p.situacaoFolha || null,
-    possui_periculosidade: !!p.possuiPericulosidade, ven_experiencia: p.venExperiencia || null,
+    possui_periculosidade: !!p.possuiPericulosidade, ven_experiencia: dataBRParaISO(p.venExperiencia),
     banco_ag_conta: p.bancoAgConta || null, conta_dep_salario: p.contaDepSalario || null,
-    mqp: p.mqp || null, data_pagamento_mqp: p.dataPagamentoMqp || null,
-    valor_mqp: (p.valorMqp === '' || p.valorMqp === undefined) ? null : p.valorMqp,
-    ferias_pagar: !!p.feriasPagar, data_pagamento_ferias: p.dataPagamentoFerias || null,
-    valor_ferias: (p.valorFerias === '' || p.valorFerias === undefined) ? null : p.valorFerias
+    mqp: p.mqp || null, data_pagamento_mqp: dataBRParaISO(p.dataPagamentoMqp),
+    valor_mqp: numeroBRParaFloat(p.valorMqp),
+    ferias_pagar: !!p.feriasPagar, data_pagamento_ferias: dataBRParaISO(p.dataPagamentoFerias),
+    valor_ferias: numeroBRParaFloat(p.valorFerias)
   };
 }
 
@@ -1342,48 +1338,6 @@ async function dpCarregarDadosIniciais(){
     dpMostrarStatusConexao(dpFormatarErroSupabase('✗ Não consegui LER os dados do Supabase', erro), 'err');
     console.error('Falha ao carregar dados iniciais do Supabase:', erro);
   }
-}
-
-/* Testa leitura E gravação de verdade (grava um registro de teste e apaga em
-   seguida) — clique manual em "Testar conexão com o Supabase" na tela de
-   ambiente. Existe porque "carregar" pode funcionar (leitura) enquanto
-   "salvar" continua quebrado (gravação) — são políticas de RLS separadas. */
-async function dpTestarConexao(){
-  dpMostrarStatusConexao('Testando conexão com o Supabase (leitura e gravação)…', '');
-  try{
-    var resSel = await sbClient.from('dp_colaboradores').select('matricula', { count: 'exact', head: true });
-    if(resSel.error) throw dpErroComOrigem('LER', resSel.error);
-
-    var matriculaTeste = '__teste_conexao__';
-    var resUp = await sbClient.from('dp_colaboradores').upsert(
-      { matricula: matriculaTeste, nome: 'TESTE DE CONEXÃO (pode apagar)' },
-      { onConflict: 'matricula' }
-    );
-    if(resUp.error) throw dpErroComOrigem('GRAVAR (upsert)', resUp.error);
-
-    var resDel = await sbClient.from('dp_colaboradores').delete().eq('matricula', matriculaTeste);
-    if(resDel.error) throw dpErroComOrigem('APAGAR o registro de teste', resDel.error);
-    /* Um DELETE sem política de RLS correspondente não dá erro nenhum — ele
-       só apaga 0 linhas silenciosamente (foi exatamente isso que deixou
-       registros de teste presos no banco antes). Por isso confirmamos de
-       verdade que o registro sumiu, em vez de confiar só na ausência de erro. */
-    var resConfere = await sbClient.from('dp_colaboradores').select('matricula').eq('matricula', matriculaTeste);
-    if(resConfere.error) throw dpErroComOrigem('CONFERIR se o registro de teste foi apagado', resConfere.error);
-    if(resConfere.data && resConfere.data.length){
-      throw dpErroComOrigem('APAGAR o registro de teste (a exclusão não deu erro, mas o registro continua no banco — falta permissão de DELETE)', { message: 'DELETE não removeu a linha (verifique a política de RLS de DELETE)' });
-    }
-
-    dpMostrarStatusConexao('✓ Conexão OK — leitura, gravação e exclusão funcionando normalmente no Supabase.', 'ok');
-    toast('Teste de conexão com o Supabase: tudo certo (leitura e gravação).');
-  } catch(erro){
-    dpMostrarStatusConexao(dpFormatarErroSupabase('✗ Falha ao ' + (erro.origem||'testar'), erro.detalhe||erro), 'err');
-    console.error('Teste de conexão com o Supabase falhou:', erro, erro.detalhe);
-  }
-}
-function dpErroComOrigem(origem, detalhe){
-  var e = new Error(detalhe && detalhe.message ? detalhe.message : 'erro desconhecido');
-  e.origem = origem; e.detalhe = detalhe;
-  return e;
 }
 
 /* Salva no Supabase um colaborador inteiro (sem "campos") ou só alguns campos
@@ -1440,7 +1394,11 @@ async function dpUpsertColaboradoresImportados(lista){
       if(resp.error) throw resp.error;
       salvos += lote.length;
     } catch(erro){
-      console.error('Falha ao salvar lote de colaboradores no Supabase (matrículas ' + lote.map(function(l){return l.matricula;}).join(', ') + '):', erro);
+      /* Loga como STRING de texto puro (não só o objeto), para o erro aparecer
+         legível de cara no console, sem precisar clicar em nada pra expandir. */
+      var textoErroLote = dpFormatarErroSupabase('Falha ao salvar lote (matrículas ' + lote.map(function(l){return l.matricula;}).join(', ') + ')', erro);
+      console.error(textoErroLote);
+      console.error('Objeto de erro completo:', erro);
       falhas = falhas.concat(lote.map(function(l){ return l.matricula; }));
       if(!primeiroErro) primeiroErro = erro;
     }
@@ -1449,9 +1407,15 @@ async function dpUpsertColaboradoresImportados(lista){
     toast(salvos + ' colaborador(es) salvo(s) no Supabase.');
     dpMostrarStatusConexao('✓ Importação salva no Supabase — ' + salvos + ' colaborador(es).', 'ok');
   } else {
-    var msgFalha = salvos + ' colaborador(es) salvo(s), mas ' + falhas.length + ' falharam (matrículas: ' + falhas.slice(0,10).join(', ') + (falhas.length>10?'...':'') + ').';
-    toast(msgFalha + ' Veja o console para detalhes.', true, 9000);
+    var msgFalha = salvos + ' colaborador(es) salvo(s), mas ' + falhas.length + ' falharam.';
+    var msgComErro = msgFalha + ' Erro: ' + (primeiroErro && primeiroErro.message ? primeiroErro.message : 'desconhecido')
+      + (primeiroErro && primeiroErro.code ? ' [código ' + primeiroErro.code + ']' : '')
+      + (primeiroErro && primeiroErro.details ? ' — ' + primeiroErro.details : '')
+      + (primeiroErro && primeiroErro.hint ? ' (dica: ' + primeiroErro.hint + ')' : '');
+    toast(msgComErro, true, 15000);
     dpMostrarStatusConexao(dpFormatarErroSupabase('✗ ' + msgFalha, primeiroErro), 'err');
+    console.error('RESUMO: ' + msgComErro);
+    console.error('Matrículas que falharam:', falhas);
   }
 }
 
@@ -1621,17 +1585,7 @@ function voltarHome(){
   $('view-home').style.display = 'block';
 }
 
-/* ================= ROTINA: FUNCIONÁRIOS (integração Ahgora) =================
-   Baseado no documento "INT F001 - Especificação Funcional - Integrador 2.0 -
-   Protheus x Ahgora". Esse documento descreve o envio Protheus -> Ahgora
-   (POST https://api.ahgora.com.br/people) com autenticação Basic (usuário e
-   senha M2M criados na Plataforma do PontoWeb). Ele NÃO documenta um endpoint
-   de LEITURA/listagem de colaboradores - por isso a busca abaixo tenta um GET
-   no mesmo endereço (convenção comum de API REST), mas isso ainda não foi
-   validado com a Ahgora. Se retornar 404/405, é sinal de que a leitura precisa
-   de outro endpoint, que teremos que confirmar com o suporte da Ahgora. */
-var AHGORA_URL_PEOPLE = 'https://api.ahgora.com.br/people';
-
+/* ================= ROTINA: FUNCIONÁRIOS ================= */
 function abrirFuncionarios(){
   $('view-home').style.display = 'none';
   $('view-rescisao').style.display = 'none';
@@ -1704,7 +1658,7 @@ function renderRescisaoTable(){
     $('resc-filtro-bar').style.display = 'none';
     $('resc-empty').style.display = 'block';
     $('resc-empty').innerHTML = 'Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; '
-      + 'Importação de Ativo (ou busque do Ahgora) para liberar a rotina de Rescisão.';
+      + 'Importação de Ativo para liberar a rotina de Rescisão.';
     $('resc-table').style.display = 'none';
     return;
   }
@@ -2298,25 +2252,6 @@ async function baixarSolicPag(){
   }
 }
 
-function abrirConfigAhgora(){
-  $('cfg-ahgora-user').value = state.ahgora.usuario || '';
-  $('cfg-ahgora-pass').value = state.ahgora.senha || '';
-  openDlg('dlg-cfg-ahgora');
-}
-
-function salvarConfigAhgora(){
-  var u = $('cfg-ahgora-user').value.trim();
-  var p = $('cfg-ahgora-pass').value;
-  if(!u || !p){
-    toast('Informe usuário e senha.', true);
-    return;
-  }
-  state.ahgora.usuario = u;
-  state.ahgora.senha = p;
-  closeDlg('dlg-cfg-ahgora');
-  buscarColaboradoresAhgora();
-}
-
 function funcMsg(texto, tipo){
   var el = $('func-msg');
   el.className = 'func-msg ' + (tipo||'info');
@@ -2327,64 +2262,6 @@ function funcMsgClear(){
   var el = $('func-msg');
   el.className = 'func-msg';
   el.innerHTML = '';
-}
-
-function buscarColaboradoresAhgora(){
-  if(!state.ahgora.usuario || !state.ahgora.senha){
-    abrirConfigAhgora();
-    return;
-  }
-  var btn = $('btn-buscar-ahgora');
-  btn.disabled = true;
-  btn.textContent = 'Buscando...';
-  funcMsgClear();
-
-  var auth = 'Basic ' + btoa(state.ahgora.usuario + ':' + state.ahgora.senha);
-
-  fetch(AHGORA_URL_PEOPLE, {
-    method: 'GET',
-    headers: { 'Authorization': auth, 'Accept': 'application/json' }
-  })
-  .then(function(resp){
-    return resp.text().then(function(bodyText){
-      var bodyJson = null;
-      try{ bodyJson = JSON.parse(bodyText); }catch(e){}
-      return { status: resp.status, ok: resp.ok, bodyText: bodyText, bodyJson: bodyJson };
-    });
-  })
-  .then(function(res){
-    if(res.status === 401){
-      funcMsg('<b>Erro 401 - Não autorizado.</b> Usuário ou senha incorretos, ou o usuário M2M não tem permissão para este serviço. Confira as credenciais em "Configurar Conexão Ahgora".', 'err');
-      return;
-    }
-    if(res.status === 404 || res.status === 405){
-      funcMsg('<b>Erro '+res.status+'.</b> Este endereço não aceita busca (GET) de colaboradores - a documentação que recebemos só mostra o envio (POST) do Protheus para a Ahgora, não a leitura. Precisamos confirmar com o suporte da Ahgora qual é o endpoint correto de consulta/listagem de funcionários.', 'err');
-      return;
-    }
-    if(!res.ok){
-      var msg = (res.bodyJson && (res.bodyJson.message || res.bodyJson.mensagem)) || res.bodyText || ('Erro '+res.status);
-      funcMsg('<b>Erro '+res.status+'.</b> ' + esc(String(msg)), 'err');
-      return;
-    }
-    var lista = res.bodyJson;
-    if(lista && !Array.isArray(lista) && Array.isArray(lista.items)) lista = lista.items;
-    if(lista && !Array.isArray(lista) && Array.isArray(lista.data)) lista = lista.data;
-    if(!Array.isArray(lista)){
-      funcMsg('A resposta chegou com sucesso (código 200), mas não veio em formato de lista de colaboradores. Veja o retorno bruto no console (F12) para ajustarmos a leitura.', 'err');
-      console.log('Retorno inesperado da Ahgora:', res.bodyJson || res.bodyText);
-      return;
-    }
-    state.colaboradores = mesclarColaboradores(state.colaboradores, lista);
-    renderColaboradoresTable();
-    funcMsg(lista.length + ' colaborador(es) importado(s) da Ahgora com sucesso.', 'ok');
-  })
-  .catch(function(err){
-    funcMsg('<b>Não foi possível conectar à API da Ahgora a partir do navegador.</b> Isso costuma acontecer quando a API bloqueia chamadas vindas de outro site (CORS) - nesse caso vamos precisar de um pequeno intermediário (proxy) para repassar a chamada. Detalhe técnico: ' + esc(err.message), 'err');
-  })
-  .finally(function(){
-    btn.disabled = false;
-    btn.textContent = '↻ Buscar do Ahgora';
-  });
 }
 
 function situacaoColaborador(p){
@@ -2414,7 +2291,7 @@ function renderColaboradoresTable(){
     $('func-filtro-bar').style.display = 'none';
     $('func-empty').style.display = 'block';
     $('func-empty').innerHTML = 'Nenhum colaborador carregado ainda.<br>'
-      + 'Clique em <b>Buscar do Ahgora</b> para importar o cadastro (é necessário configurar a conexão na primeira vez).';
+      + 'Importe a planilha em <b>Miscelânia &gt; Importação de Ativo</b> para cadastrar os colaboradores.';
     $('func-table').style.display = 'none';
     return;
   }
@@ -2934,7 +2811,7 @@ function renderDashboardQuadro(){
   var lista = state.colaboradores;
   var el = $('viz-conteudo');
   if(!lista.length){
-    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; Importação de Ativo (ou busque da Ahgora) para ver os dashboards.</div>';
+    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; Importação de Ativo para ver os dashboards.</div>';
     return;
   }
   var ativos = lista.filter(function(p){ return !p.dataDemissao; });
@@ -3001,7 +2878,7 @@ function renderDashboardIndicadores(){
   var lista = state.colaboradores;
   var el = $('viz-conteudo');
   if(!lista.length){
-    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; Importação de Ativo (ou busque da Ahgora) para ver os indicadores.</div>';
+    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Nenhum colaborador cadastrado ainda. Importe a planilha em Miscelânia &gt; Importação de Ativo para ver os indicadores.</div>';
     return;
   }
   var hoje = new Date();
