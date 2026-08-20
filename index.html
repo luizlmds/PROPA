@@ -584,6 +584,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
   /* ===== Rotina: Importação de Ativo (planilha) ===== */
   #view-importacao{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  /* ===== Rotina: Importar Processos (Jurídico > Processos Ativos) — reaproveita
+     as mesmas classes .imp-* da Importação de Ativo acima, só muda os ids
+     internos pra não colidir com a tela de colaboradores. ===== */
+  #view-importacao-processos{display:none;flex-direction:column;flex:1;overflow:hidden;}
   .imp-intro{margin:0 14px 12px;font-size:12.5px;color:#666;max-width:900px;}
   .imp-intro b{color:#444;}
   .imp-dropzone{
@@ -1229,6 +1233,60 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
       </div>
 
+      <!-- ===== Rotina: Importar Processos (Jurídico > Processos Ativos) ===== -->
+      <div id="view-importacao-processos">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Jurídico &gt; Processos Ativos</div>
+            <h1>Importar Processos</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+        <div class="imp-intro">
+          Selecione a planilha de processos ativos para importar. A primeira linha deve conter os cabeçalhos das
+          colunas (Filial, CC, Polo Ativo, Data de Distribuição, Número do Processo, Objeto, Valor da Causa
+          Atualizado, Status). Cada linha da planilha vira um registro próprio em <b>Processos</b> — a importação
+          não mescla nem substitui processos já cadastrados, mesmo que o número do processo se repita (é assim
+          que a planilha modelo já vem, com o histórico de status de cada processo). Formatos aceitos:
+          <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b>.
+        </div>
+        <div class="imp-dropzone" id="impp-dropzone">
+          <div class="ico">&#128193;</div>
+          <div>Clique para selecionar a planilha, ou arraste o arquivo aqui</div>
+          <input type="file" id="impp-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFileProcessos(this.files[0])">
+          <button class="btn primary" style="margin-top:12px;" onclick="document.getElementById('impp-file-input').click()">Selecionar Planilha</button>
+          <div class="fname" id="impp-fname"></div>
+        </div>
+        <div class="func-msg" id="impp-msg"></div>
+        <div class="imp-summary" id="impp-summary" style="display:none;">
+          <div class="imp-stat"><div class="num" id="impp-stat-total">0</div><div class="lbl">Linhas na planilha</div></div>
+          <div class="imp-stat warn"><div class="num" id="impp-stat-semnum">0</div><div class="lbl">Sem Número do Processo (importadas mesmo assim)</div></div>
+        </div>
+        <div class="routine-bar" id="impp-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
+          <div class="flex"></div>
+          <button class="btn" onclick="cancelarImportacaoProcessos()">Cancelar</button>
+          <button class="btn primary" onclick="confirmarImportacaoProcessos()">Confirmar Importação</button>
+        </div>
+        <div class="func-wrap">
+          <table class="func" id="impp-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>Filial</th>
+                <th>CC</th>
+                <th>Polo Ativo</th>
+                <th>Dt. Distribuição</th>
+                <th>Nº do Processo</th>
+                <th>Objeto</th>
+                <th>Valor da Causa Atualizado</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="impp-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== Rotina: Dashboards ===== -->
       <div id="view-dashboard">
         <div class="routine-bar">
@@ -1550,7 +1608,12 @@ var AMBIENTES = [
       {
         titulo: 'Cadastros',
         sub: 'Selecione a rotina de cadastro na lista abaixo',
-        itens: ['Processos','Partes e Terceiros','Advogados e Escritórios']
+        itens: ['Partes e Terceiros','Advogados e Escritórios']
+      },
+      {
+        titulo: 'Processos Ativos',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Processos','Importar Processos']
       },
       {
         titulo: 'Movimentações',
@@ -1565,7 +1628,7 @@ var AMBIENTES = [
       {
         titulo: 'Relatórios e Dashboards',
         sub: 'Selecione a rotina na lista abaixo',
-        itens: ['Processos Ativos','Custos com Processos']
+        itens: ['Custos com Processos']
       }
     ]
   },
@@ -1639,6 +1702,7 @@ var state = {
   colaboradores: [],   // cadastro unificado (carregado do Supabase ao abrir a página)
   importPreview: [],   // linhas lidas da planilha, aguardando confirmação
   importRemocoes: [],  // colaboradores cadastrados que sumiram da planilha, aguardando confirmação separada
+  importProcessosPreview: [], // linhas lidas da planilha de Importar Processos, aguardando confirmação
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -2145,6 +2209,7 @@ function ambVoltar(){
   $('view-ferias').style.display = 'none';
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2229,7 +2294,8 @@ var ROTINAS_PRONTAS = {
   'Relatórios e Dashboards::Provisões': 'abrirDashboardProvisoes',
   'Solicitação de Pagamento::Férias': 'abrirSolicPagFerias',
   'Solicitação de Pagamento::Rescisão': 'abrirSolicPagRescisao',
-  'Cadastros::Processos': 'abrirProcessosJuridico',
+  'Processos Ativos::Processos': 'abrirProcessosJuridico',
+  'Processos Ativos::Importar Processos': 'abrirImportacaoProcessos',
   'Cadastros::Beneficiários': 'abrirBeneficiarios',
   'Cadastros::Exames (ASO)': 'abrirExamesOcupacionais',
   'Cadastros::Usuários': 'abrirUsuarios'
@@ -2287,6 +2353,7 @@ function voltarHome(){
   $('view-ferias').style.display = 'none';
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2404,23 +2471,22 @@ function renderAbasBar(){
 var CADASTROS_SIMPLES = {
   jur_processos: {
     ambiente: 'Jurídico',
-    secao: 'Cadastros',
+    secao: 'Processos Ativos',
     titulo: 'Processos',
     tabela: 'jur_processos',
-    instrucao: 'Cadastre e acompanhe os processos judiciais da empresa. Clique numa linha da tabela para editar.',
-    campoBusca: ['numero_processo','parte_contraria','advogado_responsavel'],
+    instrucao: 'Cadastre e acompanhe os processos judiciais da empresa — mesmos campos da planilha modelo (Filial, CC, Polo Ativo, Data de Distribuição, Nº do Processo, Objeto, Valor da Causa Atualizado e Status), todos editáveis. Clique numa linha da tabela para editar, ou use "Importar Processos" para trazer tudo direto da planilha.',
+    campoBusca: ['numero_processo','polo_ativo','objeto'],
     campos: [
-      { chave:'numero_processo', label:'Nº do Processo', tipo:'text', obrigatorio:true },
-      { chave:'tipo_acao', label:'Tipo de Ação', tipo:'text' },
-      { chave:'parte_contraria', label:'Parte Contrária', tipo:'text', largura:'full' },
-      { chave:'advogado_responsavel', label:'Advogado Responsável', tipo:'text' },
-      { chave:'status', label:'Status', tipo:'select', opcoes:['Em andamento','Suspenso','Acordo','Encerrado - Ganho','Encerrado - Perdido'] },
-      { chave:'data_abertura', label:'Data de Abertura', tipo:'date' },
-      { chave:'valor_causa', label:'Valor da Causa', tipo:'number' },
-      { chave:'centro_custo', label:'Centro de Custo', tipo:'text' },
-      { chave:'observacoes', label:'Observações', tipo:'textarea', largura:'full' }
+      { chave:'filial', label:'Filial', tipo:'text' },
+      { chave:'centro_custo', label:'CC (Centro de Custo)', tipo:'text' },
+      { chave:'polo_ativo', label:'Polo Ativo', tipo:'text', largura:'full', obrigatorio:true },
+      { chave:'data_distribuicao', label:'Data de Distribuição', tipo:'date' },
+      { chave:'numero_processo', label:'Número do Processo', tipo:'text' },
+      { chave:'objeto', label:'Objeto', tipo:'text', largura:'full' },
+      { chave:'valor_causa_atualizado', label:'Valor da Causa Atualizado', tipo:'number' },
+      { chave:'status', label:'Status', tipo:'text' }
     ],
-    colunasTabela: ['numero_processo','tipo_acao','parte_contraria','advogado_responsavel','status','data_abertura','valor_causa']
+    colunasTabela: ['filial','centro_custo','polo_ativo','data_distribuicao','numero_processo','objeto','valor_causa_atualizado','status']
   },
   ben_beneficiarios: {
     ambiente: 'Benefício',
@@ -2513,6 +2579,7 @@ function abrirCadSimples(chave){
   $('view-rescisao').style.display = 'none';
   $('view-ferias').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-cad-simples').style.display = 'flex';
@@ -2746,6 +2813,7 @@ function abrirFuncionarios(){
   $('view-ferias').style.display = 'none';
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-funcionarios').style.display = 'flex';
@@ -2822,6 +2890,7 @@ function abrirRescisao(){
   $('view-ferias').style.display = 'none';
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-rescisao').style.display = 'flex';
@@ -2837,6 +2906,7 @@ function abrirFerias(){
   $('view-funcionarios').style.display = 'none';
   $('view-rescisao').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-ferias').style.display = 'flex';
@@ -3444,6 +3514,7 @@ function abrirSolicPag(tipo){
   $('view-ferias').style.display = 'none';
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'flex';
   $('solicpag-titulo').textContent = 'Solicitação de Pagamento — ' + (tipo==='ferias' ? 'Férias' : 'Rescisão');
@@ -4534,17 +4605,218 @@ function cancelarImportacao(){
   impMsgClear();
 }
 
-function initImportDropzone(){
-  var dz = $('imp-dropzone');
+/* ================= ROTINA: IMPORTAR PROCESSOS (Jurídico > Processos Ativos) =================
+   Mesma mecânica de leitura de planilha (SheetJS) da Importação de Ativo, mas
+   BEM mais simples: aqui não existe upsert por chave nem reconciliação de
+   quem "sumiu" — o usuário confirmou que a planilha modelo real repete o
+   mesmo Número do Processo em mais de uma linha (histórico de status) e
+   pediu para manter exatamente como está na planilha. Então cada linha
+   importada vira um INSERT novo em jur_processos, sempre — reimportar a
+   mesma planilha duas vezes cria registros duplicados de propósito (não é
+   bug: é o comportamento pedido). */
+var COLUNA_MAP_PROCESSOS = {
+  'filial': 'filial',
+  'cc': 'centroCusto',
+  'centro custo': 'centroCusto',
+  'polo ativo': 'poloAtivo',
+  'data de distribuicao': 'dataDistribuicao',
+  'numero do processo': 'numeroProcesso',
+  'objeto': 'objeto',
+  'valor da causa atualizado': 'valorCausaAtualizado',
+  'status': 'status'
+};
+var CAMPOS_DATA_PROCESSOS = ['dataDistribuicao'];
+
+function mapRowToProcesso(rawRow){
+  var obj = {};
+  Object.keys(rawRow).forEach(function(h){
+    var campo = COLUNA_MAP_PROCESSOS[normalizeHeader(h)];
+    if(!campo) return;
+    var val = rawRow[h];
+    if(val === undefined || val === null || val === '') return;
+    val = (CAMPOS_DATA_PROCESSOS.indexOf(campo) !== -1) ? formatarDataCelula(val) : String(val).trim();
+    obj[campo] = val;
+  });
+  return obj;
+}
+
+/* Converte um processo (objeto camelCase do app) pra linha do Supabase
+   (snake_case) — usado tanto pela importação quanto por uma futura tela de
+   edição manual (csMontarForm/salvarCadSimples já cuidam do formulário; esta
+   função aqui é só para o INSERT em lote da importação). */
+function jurProcessoParaLinha(p){
+  return {
+    filial: p.filial || null,
+    centro_custo: p.centroCusto || null,
+    polo_ativo: p.poloAtivo || null,
+    data_distribuicao: dataBRParaISO(p.dataDistribuicao),
+    numero_processo: p.numeroProcesso || null,
+    objeto: p.objeto || null,
+    valor_causa_atualizado: numeroBRParaFloat(p.valorCausaAtualizado),
+    status: p.status || null
+  };
+}
+
+function handleImportFileProcessos(file){
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    imppMsg('A biblioteca de leitura de planilhas ainda não carregou. Aguarde alguns segundos e tente novamente.', 'err');
+    return;
+  }
+  $('impp-fname').textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', cellDates: true });
+      var sheet = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      processarLinhasImportacaoProcessos(rows);
+    }catch(err){
+      imppMsg('Não foi possível ler o arquivo. Confira se é uma planilha válida (.xlsx, .xls ou .csv). Detalhe: '+esc(err.message), 'err');
+    }
+  };
+  reader.onerror = function(){ imppMsg('Erro ao ler o arquivo selecionado.', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function imppMsg(texto, tipo){
+  var el = $('impp-msg'); el.className = 'func-msg ' + (tipo||'info'); el.innerHTML = texto;
+}
+function imppMsgClear(){ var el = $('impp-msg'); el.className = 'func-msg'; el.innerHTML = ''; }
+
+function processarLinhasImportacaoProcessos(rows){
+  imppMsgClear();
+  if(!rows.length){
+    imppMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
+    return;
+  }
+  var mapeados = [];
+  rows.forEach(function(r){
+    var p = mapRowToProcesso(r);
+    /* Só descarta uma linha se ela estiver 100% em branco (nenhuma coluna
+       reconhecida) — diferente da Importação de Ativo, aqui não existe um
+       campo obrigatório tipo matrícula: a planilha real tem processos sem
+       Número do Processo ainda atribuído, e mesmo assim são processos de
+       verdade que precisam entrar no sistema. */
+    if(!Object.keys(p).length) return;
+    mapeados.push(p);
+  });
+  if(!mapeados.length){
+    imppMsg('Nenhuma coluna foi reconhecida na planilha. Confira se a primeira linha contém os cabeçalhos esperados (Filial, CC, Polo Ativo, Data de Distribuição, Número do Processo, Objeto, Valor da Causa Atualizado, Status).', 'err');
+    $('impp-summary').style.display = 'none';
+    $('impp-confirm-bar').style.display = 'none';
+    $('impp-table').style.display = 'none';
+    return;
+  }
+  /* "0" conta como "sem número" pra essa estatística — na planilha real,
+     processos ainda sem número de distribuição vêm com a célula zerada em
+     vez de vazia. A linha é importada do mesmo jeito, só não entra na
+     contagem de "tem número". */
+  var semNumero = mapeados.filter(function(p){ return !p.numeroProcesso || p.numeroProcesso === '0'; }).length;
+
+  state.importProcessosPreview = mapeados;
+  $('impp-stat-total').textContent = rows.length;
+  $('impp-stat-semnum').textContent = semNumero;
+  $('impp-summary').style.display = 'flex';
+  $('impp-confirm-bar').style.display = 'flex';
+  renderImportProcessosPreviewTable(mapeados);
+  imppMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — cada uma vira um registro próprio em Processos. Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+}
+
+function renderImportProcessosPreviewTable(lista){
+  $('impp-table').style.display = 'table';
+  $('impp-tbody').innerHTML = lista.map(function(p){
+    return '<tr>'
+      + '<td>'+esc(p.filial)+'</td>'
+      + '<td>'+esc(p.centroCusto)+'</td>'
+      + '<td>'+esc(p.poloAtivo)+'</td>'
+      + '<td>'+esc(p.dataDistribuicao)+'</td>'
+      + '<td>'+esc(p.numeroProcesso)+'</td>'
+      + '<td>'+esc(p.objeto)+'</td>'
+      + '<td>'+esc(fmtValorBR(numeroBRParaFloat(p.valorCausaAtualizado)))+'</td>'
+      + '<td>'+esc(p.status)+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function confirmarImportacaoProcessos(){
+  if(!state.importProcessosPreview.length) return;
+  aplicarImportacaoProcessos();
+}
+
+async function aplicarImportacaoProcessos(){
+  if(!state.importProcessosPreview.length) return;
+  var linhas = state.importProcessosPreview.map(jurProcessoParaLinha);
+  var qtd = linhas.length;
+
+  state.importProcessosPreview = [];
+  $('impp-summary').style.display = 'none';
+  $('impp-confirm-bar').style.display = 'none';
+  $('impp-table').style.display = 'none';
+  $('impp-fname').textContent = '';
+  $('impp-file-input').value = '';
+  imppMsg(qtd+' processo(s) importado(s) — salvando no Supabase agora… <a onclick="abrirProcessosJuridico()">Ver Processos</a>', 'ok');
+  toast(qtd+' processo(s) importado(s). Salvando no Supabase…');
+
+  var falhas = 0;
+  var primeiroErro = null;
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      var resp = await sbClient.from('jur_processos').insert(lote);
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao importar processos (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas){
+    toast(qtd + ' processo(s) salvo(s) no Supabase.');
+  } else {
+    toast(dpFormatarErroSupabase((qtd-falhas)+' processo(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+  }
+}
+
+function cancelarImportacaoProcessos(){
+  state.importProcessosPreview = [];
+  $('impp-summary').style.display = 'none';
+  $('impp-confirm-bar').style.display = 'none';
+  $('impp-table').style.display = 'none';
+  $('impp-fname').textContent = '';
+  $('impp-file-input').value = '';
+  imppMsgClear();
+}
+
+function abrirImportacaoProcessos(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'flex';
+}
+
+/* Liga o drag-and-drop de uma zona de importação genérica (usado tanto pela
+   Importação de Ativo quanto pela Importar Processos) — recebe o id da div
+   ".imp-dropzone" e a função que trata o arquivo solto/selecionado. */
+function initImportDropzoneGenerico(dzId, handler){
+  var dz = $(dzId);
   if(!dz) return;
   dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('over'); });
   dz.addEventListener('dragleave', function(){ dz.classList.remove('over'); });
   dz.addEventListener('drop', function(e){
     e.preventDefault();
     dz.classList.remove('over');
-    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleImportFile(e.dataTransfer.files[0]);
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]);
   });
 }
+function initImportDropzone(){ initImportDropzoneGenerico('imp-dropzone', handleImportFile); }
+function initImportDropzoneProcessos(){ initImportDropzoneGenerico('impp-dropzone', handleImportFileProcessos); }
 
 /* ================= DASHBOARDS ================= */
 /* Método: forma pela função do dado -> cor computada (paleta validada do
@@ -4763,17 +5035,17 @@ function vizKpiRow(tiles){
 
 /* ---- navegação das abas ---- */
 function abrirDashboardQuadro(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('quadro');
 }
 function abrirDashboardIndicadores(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('indicadores');
 }
 function abrirDashboardProvisoes(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('provisoes');
 }
@@ -5161,6 +5433,7 @@ function sideSearch(){
 /* ================= INIT ================= */
 initAmbienteScreen();
 initImportDropzone();
+initImportDropzoneProcessos();
 /* dpCarregarDadosIniciais() só é chamada depois de um login bem-sucedido
    (ver loginEntrarComoUsuario) — antes, ela rodava aqui direto no carregamento
    da página, o que buscava CPF/RG/salário de todos os colaboradores pro
