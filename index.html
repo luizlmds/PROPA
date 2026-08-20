@@ -581,6 +581,24 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .cs-senha-ok{color:#2e8b3d;font-weight:600;font-size:11.5px;}
   .cs-senha-pendente{color:#b8860b;font-weight:600;font-size:11.5px;}
   .cs-senha-reset{margin-left:8px;font-size:11.5px;}
+  /* Campo tipo "lookup-colaborador" (ex.: Medidas Disciplinares > Colaborador):
+     input de texto normal + botão de lupa ao lado, que abre dlg-lookup-colaborador. */
+  .cs-lookup-wrap{display:flex;gap:6px;}
+  .cs-lookup-wrap .cs-input{flex:1;}
+  .cs-lookup-btn{
+    flex-shrink:0;width:34px;border:1px solid #d0d0d0;border-radius:2px;background:#fff;
+    cursor:pointer;font-size:14px;color:#555;
+  }
+  .cs-lookup-btn:hover{background:#eef5fb;border-color:var(--azul);}
+  /* Linhas clicáveis da lista de colaboradores dentro de dlg-lookup-colaborador. */
+  .lookup-colab-item{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #eee;
+    cursor:pointer;font-size:12.5px;
+  }
+  .lookup-colab-item:hover{background:#eef5fb;}
+  .lookup-colab-item .mat{color:#888;font-size:11px;width:70px;flex-shrink:0;}
+  .lookup-colab-item .nome{flex:1;font-weight:600;color:#333;}
+  .lookup-colab-item .meta{color:#888;font-size:11.5px;}
   /* Lista suspensa editável direto na linha da tabela (ver
      cfg.colunasInlineSelect — hoje Status/Objeto de Processos). */
   .cs-inline-select{
@@ -1504,6 +1522,20 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   </div>
 </div>
 
+<!-- ==================== LOOKUP DE COLABORADOR (campos tipo "lookup-colaborador",
+     ex.: Medidas Disciplinares > Colaborador) — abre POR CIMA do diálogo de
+     Novo/Editar (mesma camada .overlay, mas depois dele no HTML, então pinta
+     por cima) e usa a mesma lista já carregada em state.colaboradores. ==================== -->
+<div class="overlay" id="dlg-lookup-colaborador">
+  <div class="dlg" style="width:600px;">
+    <div class="dlg-title"><span class="flex">Buscar Colaborador</span><span class="x" onclick="closeDlg('dlg-lookup-colaborador')">&#10005;</span></div>
+    <div class="dlg-body">
+      <input type="text" id="lookup-colab-busca" class="filtro-busca" style="width:100%;box-sizing:border-box;margin-bottom:10px;" placeholder="Buscar por nome ou matrícula..." oninput="renderLookupColaboradorLista()">
+      <div id="lookup-colab-lista" style="max-height:360px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== IMPORTAÇÃO: CONFIRMAR REMOÇÃO (separado) ==================== -->
 <div class="overlay" id="dlg-import-remocao">
   <div class="dlg" style="width:640px;">
@@ -1636,6 +1668,11 @@ var AMBIENTES = [
         titulo: 'Movimentações',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Admissão','Férias','Afastamentos','Rescisão','Transferências']
+      },
+      {
+        titulo: 'Medidas Disciplinares',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Medidas Disciplinares']
       },
       {
         titulo: 'Solicitação de Pagamento',
@@ -2377,7 +2414,8 @@ var ROTINAS_PRONTAS = {
   'Processos Arquivados::Importar Processos': 'abrirImportacaoProcessosArquivados',
   'Cadastros::Beneficiários': 'abrirBeneficiarios',
   'Cadastros::Exames (ASO)': 'abrirExamesOcupacionais',
-  'Cadastros::Usuários': 'abrirUsuarios'
+  'Cadastros::Usuários': 'abrirUsuarios',
+  'Medidas Disciplinares::Medidas Disciplinares': 'abrirMedidasDisciplinares'
 };
 
 function acionarRotina(chave){
@@ -2691,11 +2729,43 @@ var CADASTROS_SIMPLES = {
       { chave:'admin', label:'Administrador', tipo:'select', opcoes:['Sim','Não'], obrigatorio:true }
     ],
     colunasTabela: ['usuario','nome','email','status','admin']
+  },
+  medidas_disciplinares: {
+    ambiente: 'Departamento Pessoal',
+    secao: 'Medidas Disciplinares',
+    titulo: 'Medidas Disciplinares',
+    tabela: 'dp_medidas_disciplinares',
+    instrucao: 'Cadastre e acompanhe as medidas disciplinares aplicadas — mesmos campos da planilha de controle, todos editáveis. No campo Colaborador, use a lupa para buscar direto no cadastro de Funcionários do Departamento Pessoal: Função e CC são preenchidos automaticamente. Clique numa linha da tabela para editar.',
+    campoBusca: ['nome','matricula','motivo'],
+    campos: [
+      { chave:'matricula', label:'Matrícula', tipo:'text' },
+      /* "lookup-colaborador": campo de texto normal (continua editável na mão,
+         caso a pessoa ainda não esteja cadastrada em Funcionários) + um botão
+         de lupa que abre dlg-lookup-colaborador com a mesma lista de
+         state.colaboradores usada em Departamento Pessoal > Funcionários.
+         Ao escolher um colaborador ali, preenche este campo e, via
+         preencheAutomatico, também matricula/funcao/centro_custo — ver
+         abrirLookupColaborador/selecionarColaboradorLookup. */
+      { chave:'nome', label:'Colaborador', tipo:'lookup-colaborador', obrigatorio:true, largura:'full',
+        preencheAutomatico: { matricula:'matricula', funcao:'funcao', centro_custo:'centroCusto' } },
+      { chave:'funcao', label:'Função', tipo:'text' },
+      { chave:'centro_custo', label:'CC (Centro de Custo)', tipo:'text' },
+      { chave:'data', label:'Data', tipo:'date' },
+      { chave:'situacao', label:'Situação', tipo:'text' },
+      { chave:'alimentado_protheus', label:'Alimentado no Protheus', tipo:'text' },
+      { chave:'motivo', label:'Motivo', tipo:'text', largura:'full' },
+      { chave:'solicitante', label:'Solicitante', tipo:'text' },
+      { chave:'gestor_cc', label:'Gestor do CC', tipo:'text' },
+      { chave:'status', label:'Status', tipo:'text' },
+      { chave:'data_alimentacao', label:'Data da Alimentação', tipo:'date' }
+    ],
+    colunasTabela: ['nome','funcao','data','situacao','alimentado_protheus','centro_custo','motivo','solicitante','gestor_cc','status','data_alimentacao']
   }
 };
 
 function abrirProcessosJuridico(){ abrirCadSimples('jur_processos'); }
 function abrirProcessosArquivados(){ abrirCadSimples('jur_processos_arquivados'); }
+function abrirMedidasDisciplinares(){ abrirCadSimples('medidas_disciplinares'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirUsuarios(){
@@ -3032,10 +3102,86 @@ function csCampoHtml(c, item){
   } else if(c.tipo === 'number'){
     var valFmt = (val === '' || val === null) ? '' : Number(val).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
     inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(valFmt) + '" placeholder="0,00">';
+  } else if(c.tipo === 'lookup-colaborador'){
+    /* Campo de texto normal (continua editável na mão) + botão de lupa que
+       abre dlg-lookup-colaborador — ver abrirLookupColaborador(). O campo
+       "chave" fica gravado no próprio botão pra função saber qual campo (e,
+       via c.preencheAutomatico, quais outros) preencher ao escolher alguém. */
+    inputHtml = '<div class="cs-lookup-wrap">'
+      + '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val) + '" placeholder="Digite o nome ou use a lupa para buscar…">'
+      + '<button type="button" class="cs-lookup-btn" onclick="abrirLookupColaborador(\'' + c.chave + '\')" title="Buscar colaborador no cadastro de Funcionários">&#128269;</button>'
+      + '</div>';
   } else {
     inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val) + '">';
   }
   return '<div class="fld"><label>' + esc(c.label) + (c.obrigatorio ? ' *' : '') + '</label>' + inputHtml + '</div>';
+}
+
+/* ================= LOOKUP DE COLABORADOR (campos tipo "lookup-colaborador") =================
+   Reaproveita state.colaboradores — o mesmo array já carregado do Supabase
+   pra tela de Funcionários — em vez de buscar de novo. Guarda em
+   stateLookupColaborador.campoDestino qual campo do formulário aberto
+   (cs-dlg-form) disparou a lupa, pra saber onde escrever o nome escolhido
+   (e, via cfg.campos[...].preencheAutomatico, quais outros campos também
+   preencher a partir do colaborador). */
+var stateLookupColaborador = { campoDestino: null };
+
+function abrirLookupColaborador(campoDestino){
+  stateLookupColaborador.campoDestino = campoDestino;
+  $('lookup-colab-busca').value = '';
+  renderLookupColaboradorLista();
+  openDlg('dlg-lookup-colaborador');
+  $('lookup-colab-busca').focus();
+}
+
+function renderLookupColaboradorLista(){
+  var busca = ($('lookup-colab-busca').value || '').trim().toLowerCase();
+  var lista = state.colaboradores.filter(function(p){
+    /* Mesma regra de exibição da tela de Funcionários: colaboradores
+       marcados como removidos pela Importação de Ativo não aparecem aqui —
+       não faz sentido lançar uma medida disciplinar pra alguém que já saiu
+       da planilha de Ativos. */
+    if(p.removidoImportacao) return false;
+    if(!busca) return true;
+    return String(p.nome||'').toLowerCase().indexOf(busca) >= 0
+      || String(p.matricula||'').toLowerCase().indexOf(busca) >= 0;
+  }).sort(function(a,b){ return String(a.nome||'').localeCompare(String(b.nome||''), 'pt-BR'); });
+
+  var wrap = $('lookup-colab-lista');
+  if(!lista.length){
+    wrap.innerHTML = '<div class="vz-empty">Nenhum colaborador encontrado.</div>';
+    return;
+  }
+  wrap.innerHTML = lista.map(function(p){
+    var meta = [campoFuncao(p), p.centroCusto ? ('CC ' + p.centroCusto) : ''].filter(Boolean).join(' · ');
+    return '<div class="lookup-colab-item" onclick="selecionarColaboradorLookup(\'' + esc(p.matricula) + '\')">'
+      + '<span class="mat">' + esc(p.matricula) + '</span>'
+      + '<span class="nome">' + esc(p.nome) + '</span>'
+      + '<span class="meta">' + esc(meta) + '</span>'
+      + '</div>';
+  }).join('');
+}
+
+function selecionarColaboradorLookup(matricula){
+  var campoDestino = stateLookupColaborador.campoDestino;
+  if(!campoDestino) return;
+  var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
+  if(!cfg) return;
+  var campo = cfg.campos.find(function(c){ return c.chave === campoDestino; });
+  var colab = state.colaboradores.find(function(c){ return c.matricula === matricula; });
+  if(!campo || !colab) return;
+
+  var elDestino = $('cs-f-' + campoDestino);
+  if(elDestino) elDestino.value = colab.nome || '';
+
+  if(campo.preencheAutomatico){
+    Object.keys(campo.preencheAutomatico).forEach(function(chaveCampoForm){
+      var propColaborador = campo.preencheAutomatico[chaveCampoForm];
+      var elAuto = $('cs-f-' + chaveCampoForm);
+      if(elAuto) elAuto.value = colab[propColaborador] || '';
+    });
+  }
+  closeDlg('dlg-lookup-colaborador');
 }
 
 function csAbrirNovo(){
