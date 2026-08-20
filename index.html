@@ -607,6 +607,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   }
   .cs-inline-select:hover{border-color:#ccc;background:#f7f9fb;}
   .cs-inline-select:focus{outline:none;border-color:var(--azul);background:#fff;}
+  /* Campo tipo "ambientes-checkbox" (Usuários > Ambientes com Acesso). */
+  .cs-ambientes-chk{display:flex;flex-wrap:wrap;gap:8px 18px;padding:8px 0;}
+  .cs-ambientes-chk label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#444;cursor:pointer;}
+  .cs-ambientes-chk input[type=checkbox]{cursor:pointer;}
 
   /* ===== Rotina: Importação de Ativo (planilha) ===== */
   #view-importacao{display:none;flex-direction:column;flex:1;overflow:hidden;}
@@ -2321,7 +2325,13 @@ async function criarSenhaConfirmar(){
 function loginEntrarComoUsuario(registro){
   state.usuarioLogado = {
     id: registro.id, usuario: registro.usuario, nome: registro.nome, email: registro.email || '',
-    admin: registro.admin === 'Sim'
+    admin: registro.admin === 'Sim',
+    /* NULL (usuário nunca restringido, ou cadastrado antes dessa
+       funcionalidade existir) vira null aqui também — usuarioTemAcessoAmbiente
+       trata null como "sem restrição" (acesso a tudo), só passando a limitar
+       de verdade depois que alguém salva um array (mesmo vazio) pra essa
+       pessoa no cadastro de Usuários. */
+    ambientesPermitidos: Array.isArray(registro.ambientes_permitidos) ? registro.ambientes_permitidos : null
   };
   sbClient.from('usuarios').update({ ultimo_acesso: new Date().toISOString() }).eq('id', registro.id).then(function(){}, function(erro){
     console.error('Falha ao registrar último acesso (não bloqueia o login):', erro);
@@ -2343,6 +2353,21 @@ function logOff(){
 }
 
 /* ================= TELA DE AMBIENTE ================= */
+/* Regra de acesso por ambiente (ver campo "Ambientes com Acesso" no cadastro
+   de Usuários): Administrador sempre acessa tudo, de propósito, pra ninguém
+   se trancar fora do próprio cadastro de Usuários (que mora dentro do
+   ambiente Departamento Pessoal) esquecendo de marcar uma caixinha pra si
+   mesmo. Pra quem não é admin, ambientesPermitidos===null (nunca restringido,
+   inclusive todo mundo cadastrado antes dessa funcionalidade existir) libera
+   tudo; um array já salvo restringe de verdade aos códigos ali dentro. */
+function usuarioTemAcessoAmbiente(codigo){
+  if(!state.usuarioLogado) return false;
+  if(state.usuarioLogado.admin) return true;
+  var permitidos = state.usuarioLogado.ambientesPermitidos;
+  if(!Array.isArray(permitidos)) return true;
+  return permitidos.indexOf(codigo) >= 0;
+}
+
 function initAmbienteScreen(){
   $('amb-data').value = fmtBR(hoje());
   renderListaAmbientes();
@@ -2351,9 +2376,11 @@ function initAmbienteScreen(){
 function renderListaAmbientes(){
   var wrap = $('lista-ambientes');
   wrap.innerHTML = AMBIENTES.map(function(a){
-    var cls = a.disponivel ? 'amb-opt' : 'amb-opt disabled';
-    var onclick = a.disponivel ? 'onclick="selecionarAmbiente(\''+a.codigo+'\')"' : '';
-    var tag = a.disponivel ? '' : '<span class="amb-opt-tag">Em breve</span>';
+    var temAcesso = usuarioTemAcessoAmbiente(a.codigo);
+    var acessivel = a.disponivel && temAcesso;
+    var cls = acessivel ? 'amb-opt' : 'amb-opt disabled';
+    var onclick = acessivel ? 'onclick="selecionarAmbiente(\''+a.codigo+'\')"' : '';
+    var tag = !a.disponivel ? '<span class="amb-opt-tag">Em breve</span>' : (!temAcesso ? '<span class="amb-opt-tag">Sem acesso</span>' : '');
     return '<div class="'+cls+'" '+onclick+'>'
       + '<div class="amb-opt-ico">'+a.icone+'</div>'
       + '<div class="amb-opt-txt"><div class="nome">'+esc(a.codigo)+' - '+esc(a.nome)+'</div><div class="desc">'+esc(a.desc)+'</div></div>'
@@ -2370,6 +2397,10 @@ function abrirLookupAmbiente(){
 function selecionarAmbiente(codigo){
   var a = AMBIENTES.find(function(x){ return x.codigo===codigo; });
   if(!a || !a.disponivel) return;
+  if(!usuarioTemAcessoAmbiente(codigo)){
+    toast('Você não tem acesso a este ambiente. Fale com um administrador do portal.', true);
+    return;
+  }
   state.ambiente = a;
   $('amb-ambiente').value = a.codigo+' - '+a.nome;
   $('amb-ambiente-desc').textContent = a.desc;
@@ -2785,16 +2816,27 @@ var CADASTROS_SIMPLES = {
     secao: 'Cadastros',
     titulo: 'Usuários',
     tabela: 'usuarios',
-    instrucao: 'Cadastre quem pode acessar o portal. A senha NÃO é definida aqui — cada usuário cria a própria na tela de Login, no primeiro acesso. Marque "Administrador" só pra quem também precisa gerenciar outros usuários (essa tela fica escondida pra quem não for admin). Clique numa linha da tabela para editar.',
+    instrucao: 'Cadastre quem pode acessar o portal. A senha NÃO é definida aqui — cada usuário cria a própria na tela de Login, no primeiro acesso. Marque "Administrador" só pra quem também precisa gerenciar outros usuários (essa tela fica escondida pra quem não for admin) — um Administrador sempre acessa todos os ambientes, independente do que estiver marcado em "Ambientes com Acesso". Pra quem não for admin, marque só os ambientes que a pessoa deve poder entrar; deixando tudo desmarcado, ela não consegue entrar em nenhum. Clique numa linha da tabela para editar.',
     campoBusca: ['usuario','nome','email'],
     campos: [
       { chave:'usuario', label:'Usuário (login)', tipo:'text', obrigatorio:true },
       { chave:'nome', label:'Nome completo', tipo:'text', obrigatorio:true },
       { chave:'email', label:'E-mail', tipo:'text' },
       { chave:'status', label:'Status', tipo:'select', opcoes:['Ativo','Inativo'], obrigatorio:true },
-      { chave:'admin', label:'Administrador', tipo:'select', opcoes:['Sim','Não'], obrigatorio:true }
+      { chave:'admin', label:'Administrador', tipo:'select', opcoes:['Sim','Não'], obrigatorio:true },
+      /* "ambientes-checkbox": uma caixinha por ambiente cadastrado em
+         AMBIENTES — ver csCampoHtml. Ignorado pra quem é Administrador (esse
+         sempre acessa tudo, ver usuarioTemAcessoAmbiente). Ao editar um
+         usuário já existente cujo ambientes_permitidos ainda esteja NULL no
+         banco (cadastrado antes dessa funcionalidade existir, ou nunca
+         restringido), o formulário mostra todas as caixinhas já marcadas —
+         representa fielmente o acesso irrestrito que a pessoa já tinha, e
+         evita que só abrir/salvar o cadastro sem mexer nisso acabe
+         restringindo o acesso dela sem querer. Num cadastro NOVO, começa tudo
+         desmarcado (menor privilégio por padrão). */
+      { chave:'ambientes_permitidos', label:'Ambientes com Acesso', tipo:'ambientes-checkbox', largura:'full' }
     ],
-    colunasTabela: ['usuario','nome','email','status','admin']
+    colunasTabela: ['usuario','nome','email','status','admin','ambientes_permitidos']
   },
   medidas_disciplinares: {
     ambiente: 'Jurídico',
@@ -3048,6 +3090,18 @@ async function carregarCadSimples(){
   }
 }
 
+/* Texto amigável pra célula "Ambientes com Acesso" na tabela de Usuários —
+   ver usuarioTemAcessoAmbiente() pra regra de acesso equivalente aplicada de
+   verdade na tela de seleção de ambiente. */
+function formatarAmbientesPermitidos(val){
+  if(!Array.isArray(val)) return 'Todos'; // NULL = nunca restringido = irrestrito
+  if(!val.length) return 'Nenhum';
+  return val.map(function(codigo){
+    var a = AMBIENTES.find(function(x){ return x.codigo === codigo; });
+    return a ? a.codigo : codigo;
+  }).join(', ');
+}
+
 function renderCadSimplesTabela(){
   var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
   if(!cfg) return;
@@ -3105,7 +3159,8 @@ function renderCadSimplesTabela(){
       var campo = cfg.campos.find(function(c){ return c.chave === chaveCampo; });
       var val = item[chaveCampo];
       var txt;
-      if(val === null || val === undefined || val === ''){ txt = '—'; }
+      if(campo && campo.tipo === 'ambientes-checkbox'){ txt = esc(formatarAmbientesPermitidos(val)); }
+      else if(val === null || val === undefined || val === ''){ txt = '—'; }
       else if(campo && campo.tipo === 'date'){ txt = fmtBR(val); }
       else if(campo && campo.tipo === 'number'){ txt = fmtValorBR(val) || '—'; }
       else { txt = esc(val); }
@@ -3185,6 +3240,25 @@ function csCampoHtml(c, item){
     inputHtml = '<div class="cs-lookup-wrap">'
       + '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val) + '" placeholder="Digite o nome ou use a lupa para buscar…">'
       + '<button type="button" class="cs-lookup-btn" onclick="abrirLookupColaborador(\'' + c.chave + '\')" title="Buscar colaborador no cadastro de Funcionários">&#128269;</button>'
+      + '</div>';
+  } else if(c.tipo === 'ambientes-checkbox'){
+    /* Uma caixinha por ambiente (ver AMBIENTES). Ignora o "val" genérico
+       calculado lá em cima (que trataria array/null igual a qualquer outro
+       campo) e decide o estado marcado de cada caixinha explicitamente:
+         - cadastro NOVO (item null)                         -> nada marcado
+         - editando, campo já é um array no banco             -> marca só esses
+         - editando, campo ainda é NULL (nunca restringido)   -> marca TODAS
+           (representa fielmente o acesso irrestrito que a pessoa já tem hoje,
+           pra não "restringir sem querer" só de abrir e salvar o cadastro) */
+    var marcados;
+    if(!item){ marcados = []; }
+    else if(Array.isArray(item[c.chave])){ marcados = item[c.chave]; }
+    else { marcados = AMBIENTES.map(function(a){ return a.codigo; }); }
+    inputHtml = '<div id="cs-f-' + c.chave + '" class="cs-ambientes-chk">'
+      + AMBIENTES.map(function(a){
+          var checked = marcados.indexOf(a.codigo) >= 0 ? ' checked' : '';
+          return '<label><input type="checkbox" value="' + esc(a.codigo) + '"' + checked + '> ' + esc(a.codigo) + ' - ' + esc(a.nome) + '</label>';
+        }).join('')
       + '</div>';
   } else {
     inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val) + '">';
@@ -3285,6 +3359,17 @@ async function salvarCadSimples(){
   var payload = {};
   var erroCampo = null;
   cfg.campos.forEach(function(c){
+    if(c.tipo === 'ambientes-checkbox'){
+      /* Container de caixinhas, não um único input — lê os valores marcados
+         direto do DOM em vez de $('cs-f-'+c.chave).value (que não existiria
+         pra uma <div>). Sempre grava um array (mesmo vazio) — depois que o
+         campo passa pelo formulário uma vez, o "NULL = irrestrito" de
+         usuários antigos não se aplica mais a esse registro. */
+      var wrap = $('cs-f-' + c.chave);
+      var marcados = wrap ? Array.prototype.map.call(wrap.querySelectorAll('input[type=checkbox]:checked'), function(el){ return el.value; }) : [];
+      payload[c.chave] = marcados;
+      return;
+    }
     var el = $('cs-f-' + c.chave);
     var v = el ? el.value : '';
     if(c.obrigatorio && !String(v).trim() && !erroCampo){ erroCampo = 'Preencha o campo "' + c.label + '".'; }
