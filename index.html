@@ -1668,17 +1668,18 @@ function dpLinhaParaColaborador(r){
   return {
     matricula: r.matricula, nome: r.nome, cpf: r.cpf || '', rg: r.rg || '', ctps: r.ctps || '',
     serieCtps: r.serie_ctps || '', pis: r.pis || '', sexo: r.sexo || '',
-    dataNascimento: r.data_nascimento || '', nomeMae: r.nome_mae || '',
+    dataNascimento: dataISOParaBR(r.data_nascimento), nomeMae: r.nome_mae || '',
     municipioNasc: r.municipio_nasc || '', deficiente: !!r.deficiente,
     tipoDeficiencia: r.tipo_deficiencia || '', endereco: r.endereco || '',
     numEndereco: r.num_endereco || '', bairro: r.bairro || '', municipio: r.municipio || '',
     telefone: r.telefone || '', dddCelular: r.ddd_celular || '', numCelular: r.num_celular || '',
     filial: r.filial || '', centroCusto: r.centro_custo || '', cargo: r.cargo || '',
     funcao: r.funcao || '', codFuncao: r.cod_funcao || '', cbo: r.cbo || '',
-    dataAdmissao: r.data_admissao || '', dataDemissao: r.data_demissao || '',
+    dataAdmissao: dataISOParaBR(r.data_admissao), dataDemissao: dataISOParaBR(r.data_demissao),
     salarioNominal: r.salario_nominal, salarioBaseDissidio: r.salario_base_dissidio,
     turno: r.turno || '', situacaoFolha: r.situacao_folha || '',
-    possuiPericulosidade: !!r.possui_periculosidade, venExperiencia: r.ven_experiencia || '',
+    possuiPericulosidade: !!r.possui_periculosidade,
+    venExperiencia1: dataISOParaBR(r.ven_experiencia_1), venExperiencia2: dataISOParaBR(r.ven_experiencia_2),
     bancoAgConta: r.banco_ag_conta || '', contaDepSalario: r.conta_dep_salario || '',
     mqp: r.mqp || '', dataPagamentoMqp: r.data_pagamento_mqp || '',
     valorMqp: (r.valor_mqp === null || r.valor_mqp === undefined) ? '' : r.valor_mqp,
@@ -1711,6 +1712,26 @@ function dataBRParaISO(s){
   if(y < 100) y += 2000;
   if(mo < 1 || mo > 12 || d < 1 || d > 31) return null;
   return y + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
+
+/* Inverso de dataBRParaISO: converte uma data ISO (AAAA-MM-DD — é sempre
+   assim que o Postgres/Supabase devolve uma coluna "date") para o formato
+   brasileiro (DD/MM/AAAA) que o app usa internamente nos campos
+   dataNascimento/dataAdmissao/dataDemissao/venExperiencia1/venExperiencia2
+   (ver CAMPOS_DATA e parseDateBR, que só reconhece DD/MM/AAAA). Sem essa
+   conversão ao reler os dados do Supabase, esses campos ficavam em ISO na
+   tela (ex.: "1971-06-20" em vez de "20/06/1971") e qualquer comparação via
+   parseDateBR parava de encontrar a data — foi por isso que "Aniversariantes
+   do Mês" e "Vencimento de Experiência" no dashboard nunca apareciam depois
+   de um recarregamento. Retorna string vazia (não null) para manter o mesmo
+   contrato de "campo vazio" já usado nesses campos no resto do app. */
+function dataISOParaBR(s){
+  if(s === null || s === undefined) return '';
+  var str = String(s).trim();
+  if(!str) return '';
+  var m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return str; /* já não está em ISO — devolve como veio, defensivo */
+  return m[3] + '/' + m[2] + '/' + m[1];
 }
 
 /* Converte um valor numérico (salário, valor de MQP/férias) para number,
@@ -1746,7 +1767,8 @@ function dpColaboradorParaLinha(p){
     salario_nominal: numeroBRParaFloat(p.salarioNominal),
     salario_base_dissidio: numeroBRParaFloat(p.salarioBaseDissidio),
     turno: p.turno || null, situacao_folha: p.situacaoFolha || null,
-    possui_periculosidade: !!p.possuiPericulosidade, ven_experiencia: dataBRParaISO(p.venExperiencia),
+    possui_periculosidade: !!p.possuiPericulosidade,
+    ven_experiencia_1: dataBRParaISO(p.venExperiencia1), ven_experiencia_2: dataBRParaISO(p.venExperiencia2),
     banco_ag_conta: p.bancoAgConta || null, conta_dep_salario: p.contaDepSalario || null,
     mqp: p.mqp || null, data_pagamento_mqp: dataBRParaISO(p.dataPagamentoMqp),
     valor_mqp: numeroBRParaFloat(p.valorMqp),
