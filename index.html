@@ -2022,7 +2022,10 @@ async function criarSenhaConfirmar(){
 }
 
 function loginEntrarComoUsuario(registro){
-  state.usuarioLogado = { id: registro.id, usuario: registro.usuario, nome: registro.nome, email: registro.email || '' };
+  state.usuarioLogado = {
+    id: registro.id, usuario: registro.usuario, nome: registro.nome, email: registro.email || '',
+    admin: registro.admin === 'Sim'
+  };
   sbClient.from('usuarios').update({ ultimo_acesso: new Date().toISOString() }).eq('id', registro.id).then(function(){}, function(erro){
     console.error('Falha ao registrar último acesso (não bloqueia o login):', erro);
   });
@@ -2121,12 +2124,37 @@ function entrarNoAmbiente(a){
   $('sess-usuario').textContent = state.usuarioLogado ? state.usuarioLogado.nome : '';
   $('sb-module-title').textContent = a.nome;
 
-  renderMenuTree(a);
-  renderHome(a);
+  var aVisivel = ambienteFiltradoPorPermissao(a);
+  renderMenuTree(aVisivel);
+  renderHome(aVisivel);
 
   state.abas = [];
   state.abaAtivaId = null;
   abaCriarHome();
+}
+
+/* "Cadastros > Usuários" só deve aparecer no menu/Início pra quem é admin
+   (ver campo "admin" do cadastro de Usuários) — quem não é admin nem fica
+   sabendo que essa rotina existe. Retorna uma CÓPIA do ambiente com esse
+   item removido da seção Cadastros quando necessário, sem alterar o objeto
+   original em AMBIENTES (que é reaproveitado a cada entrada no ambiente). */
+function ambienteFiltradoPorPermissao(a){
+  var souAdmin = !!(state.usuarioLogado && state.usuarioLogado.admin);
+  if(souAdmin) return a;
+  var mudou = false;
+  var secoes = a.secoes.map(function(sec){
+    if(sec.titulo !== 'Cadastros' || sec.itens.indexOf('Usuários') < 0) return sec;
+    mudou = true;
+    var copia = {};
+    for(var k in sec){ copia[k] = sec[k]; }
+    copia.itens = sec.itens.filter(function(item){ return item !== 'Usuários'; });
+    return copia;
+  });
+  if(!mudou) return a;
+  var copiaAmbiente = {};
+  for(var k in a){ copiaAmbiente[k] = a[k]; }
+  copiaAmbiente.secoes = secoes;
+  return copiaAmbiente;
 }
 
 /* Rotinas já implementadas: mapa "Seção::Item" -> função a chamar.
@@ -2164,8 +2192,8 @@ function acionarRotina(chave){
 
 function renderMenuTree(a){
   var html = '';
-  a.secoes.forEach(function(sec, i){
-    html += '<div class="tree-parent'+(i===0?'':' closed')+'" onclick="toggleTree(this)"><span class="caret">&#9660;</span>'+esc(sec.titulo)+' ('+sec.itens.length+')</div>';
+  a.secoes.forEach(function(sec){
+    html += '<div class="tree-parent closed" onclick="toggleTree(this)"><span class="caret">&#9660;</span>'+esc(sec.titulo)+' ('+sec.itens.length+')</div>';
     html += '<div class="tree-kids">';
     sec.itens.forEach(function(item){
       var chave = sec.titulo + '::' + item;
@@ -2385,22 +2413,34 @@ var CADASTROS_SIMPLES = {
     secao: 'Cadastros',
     titulo: 'Usuários',
     tabela: 'usuarios',
-    instrucao: 'Cadastre quem pode acessar o portal. A senha NÃO é definida aqui — cada usuário cria a própria na tela de Login, no primeiro acesso. Clique numa linha da tabela para editar.',
+    instrucao: 'Cadastre quem pode acessar o portal. A senha NÃO é definida aqui — cada usuário cria a própria na tela de Login, no primeiro acesso. Marque "Administrador" só pra quem também precisa gerenciar outros usuários (essa tela fica escondida pra quem não for admin). Clique numa linha da tabela para editar.',
     campoBusca: ['usuario','nome','email'],
     campos: [
       { chave:'usuario', label:'Usuário (login)', tipo:'text', obrigatorio:true },
       { chave:'nome', label:'Nome completo', tipo:'text', obrigatorio:true },
       { chave:'email', label:'E-mail', tipo:'text' },
-      { chave:'status', label:'Status', tipo:'select', opcoes:['Ativo','Inativo'], obrigatorio:true }
+      { chave:'status', label:'Status', tipo:'select', opcoes:['Ativo','Inativo'], obrigatorio:true },
+      { chave:'admin', label:'Administrador', tipo:'select', opcoes:['Sim','Não'], obrigatorio:true }
     ],
-    colunasTabela: ['usuario','nome','email','status']
+    colunasTabela: ['usuario','nome','email','status','admin']
   }
 };
 
 function abrirProcessosJuridico(){ abrirCadSimples('jur_processos'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
-function abrirUsuarios(){ abrirCadSimples('usuarios'); }
+function abrirUsuarios(){
+  /* Defesa extra: o item "Usuários" já nem aparece no menu/Início pra quem
+     não é admin (ver ambienteFiltradoPorPermissao), mas essa checagem aqui
+     garante que ninguém entra na tela mesmo chamando a rotina por fora do
+     menu (ex.: veio de uma aba já aberta antes de perder permissão de admin). */
+  if(!state.usuarioLogado || !state.usuarioLogado.admin){
+    toast('Você não tem permissão para acessar o cadastro de Usuários.', true);
+    voltarHome();
+    return;
+  }
+  abrirCadSimples('usuarios');
+}
 
 var stateCadSimples = { chave: null, dados: [], editandoId: null };
 
