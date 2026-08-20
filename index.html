@@ -617,6 +617,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   /* ===== Rotina: Importar Processos (Jurídico > Processos Arquivados) —
      mesma ideia, planilha e colunas diferentes. ===== */
   #view-importacao-processos-arquivados{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  /* ===== Rotina: Importar Medidas Disciplinares (Jurídico > Medidas Disciplinares) —
+     mesma ideia, planilha e colunas diferentes. ===== */
+  #view-importacao-medidas{display:none;flex-direction:column;flex:1;overflow:hidden;}
   .imp-intro{margin:0 14px 12px;font-size:12.5px;color:#666;max-width:900px;}
   .imp-intro b{color:#444;}
   .imp-dropzone{
@@ -1374,6 +1377,65 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
       </div>
 
+      <!-- ===== Rotina: Importar Medidas Disciplinares (Jurídico > Medidas Disciplinares) ===== -->
+      <div id="view-importacao-medidas">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Jurídico &gt; Medidas Disciplinares</div>
+            <h1>Importar Medidas Disciplinares</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+        <div class="imp-intro">
+          Selecione a planilha de controle de medidas disciplinares para importar. A primeira linha deve conter os
+          cabeçalhos das colunas (Colaborador, Função, Data, Situação, Alimentado no Protheus, CC, Motivo,
+          Solicitante, Gestor do CC, Status, Data da Alimentação). Cada linha da planilha vira um registro próprio em
+          <b>Medidas Disciplinares</b> — a importação não mescla nem substitui registros já cadastrados, mesmo que o
+          colaborador se repita (é assim que a planilha modelo já vem, com o histórico de medidas de cada
+          colaborador). A matrícula não vem na planilha; se quiser vincular um registro importado a um colaborador
+          específico depois, edite o registro e use a lupa no campo Colaborador. Formatos aceitos: <b>.xlsx</b>,
+          <b>.xls</b> ou <b>.csv</b>.
+        </div>
+        <div class="imp-dropzone" id="impm-dropzone">
+          <div class="ico">&#128193;</div>
+          <div>Clique para selecionar a planilha, ou arraste o arquivo aqui</div>
+          <input type="file" id="impm-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFileMedidas(this.files[0])">
+          <button class="btn primary" style="margin-top:12px;" onclick="document.getElementById('impm-file-input').click()">Selecionar Planilha</button>
+          <div class="fname" id="impm-fname"></div>
+        </div>
+        <div class="func-msg" id="impm-msg"></div>
+        <div class="imp-summary" id="impm-summary" style="display:none;">
+          <div class="imp-stat"><div class="num" id="impm-stat-total">0</div><div class="lbl">Linhas na planilha</div></div>
+          <div class="imp-stat warn"><div class="num" id="impm-stat-semnome">0</div><div class="lbl">Sem Colaborador informado (importadas mesmo assim)</div></div>
+        </div>
+        <div class="routine-bar" id="impm-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
+          <div class="flex"></div>
+          <button class="btn" onclick="cancelarImportacaoMedidas()">Cancelar</button>
+          <button class="btn primary" onclick="confirmarImportacaoMedidas()">Confirmar Importação</button>
+        </div>
+        <div class="func-wrap">
+          <table class="func" id="impm-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Função</th>
+                <th>Data</th>
+                <th>Situação</th>
+                <th>Alimentado no Protheus</th>
+                <th>CC</th>
+                <th>Motivo</th>
+                <th>Solicitante</th>
+                <th>Gestor do CC</th>
+                <th>Status</th>
+                <th>Dt. Alimentação</th>
+              </tr>
+            </thead>
+            <tbody id="impm-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== Rotina: Dashboards ===== -->
       <div id="view-dashboard">
         <div class="routine-bar">
@@ -1725,7 +1787,7 @@ var AMBIENTES = [
       {
         titulo: 'Medidas Disciplinares',
         sub: 'Selecione a rotina na lista abaixo',
-        itens: ['Medidas Disciplinares']
+        itens: ['Medidas Disciplinares','Importar Medidas Disciplinares']
       },
       {
         titulo: 'Movimentações',
@@ -1816,6 +1878,7 @@ var state = {
   importRemocoes: [],  // colaboradores cadastrados que sumiram da planilha, aguardando confirmação separada
   importProcessosPreview: [], // linhas lidas da planilha de Importar Processos, aguardando confirmação
   importProcessosArquivadosPreview: [], // idem, para a planilha de Processos Arquivados
+  importMedidasPreview: [], // idem, para a planilha de Importar Medidas Disciplinares
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -2324,6 +2387,7 @@ function ambVoltar(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2415,7 +2479,8 @@ var ROTINAS_PRONTAS = {
   'Cadastros::Beneficiários': 'abrirBeneficiarios',
   'Cadastros::Exames (ASO)': 'abrirExamesOcupacionais',
   'Cadastros::Usuários': 'abrirUsuarios',
-  'Medidas Disciplinares::Medidas Disciplinares': 'abrirMedidasDisciplinares'
+  'Medidas Disciplinares::Medidas Disciplinares': 'abrirMedidasDisciplinares',
+  'Medidas Disciplinares::Importar Medidas Disciplinares': 'abrirImportacaoMedidasDisciplinares'
 };
 
 function acionarRotina(chave){
@@ -2472,6 +2537,7 @@ function voltarHome(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2801,6 +2867,7 @@ function abrirCadSimples(chave){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-cad-simples').style.display = 'flex';
@@ -3265,6 +3332,7 @@ function abrirFuncionarios(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-funcionarios').style.display = 'flex';
@@ -3343,6 +3411,7 @@ function abrirRescisao(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-rescisao').style.display = 'flex';
@@ -3360,6 +3429,7 @@ function abrirFerias(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-ferias').style.display = 'flex';
@@ -3969,6 +4039,7 @@ function abrirSolicPag(tipo){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'flex';
   $('solicpag-titulo').textContent = 'Solicitação de Pagamento — ' + (tipo==='ferias' ? 'Férias' : 'Rescisão');
@@ -5253,6 +5324,7 @@ function abrirImportacaoProcessos(){
   $('view-solicpag').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-importacao-processos').style.display = 'flex';
 }
 
@@ -5450,7 +5522,208 @@ function abrirImportacaoProcessosArquivados(){
   $('view-solicpag').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'flex';
+}
+
+/* ================= ROTINA: IMPORTAR MEDIDAS DISCIPLINARES (Jurídico > Medidas Disciplinares) =================
+   Mesma mecânica e mesma filosofia das Importar Processos acima — cada linha
+   da planilha vira um INSERT novo, sempre; sem upsert/dedup por colaborador
+   (a planilha real tem o mesmo colaborador aparecendo várias vezes, uma
+   linha por medida aplicada, e é assim que deve ficar). A planilha não traz
+   matrícula — quem quiser vincular um registro importado a um colaborador
+   específico pode editar o registro depois e usar a lupa. */
+var COLUNA_MAP_MEDIDAS = {
+  'colaborador': 'nome',
+  'funcao': 'funcao',
+  'data': 'data',
+  'situacao': 'situacao',
+  'alimentado no protheus': 'alimentadoProtheus',
+  'cc': 'centroCusto',
+  'centro de custo': 'centroCusto',
+  'motivo': 'motivo',
+  'solicitante': 'solicitante',
+  'gestor do cc': 'gestorCc',
+  'status': 'status',
+  'data da alimentacao': 'dataAlimentacao'
+};
+var CAMPOS_DATA_MEDIDAS = ['data','dataAlimentacao'];
+
+function mapRowToMedida(rawRow){
+  var obj = {};
+  Object.keys(rawRow).forEach(function(h){
+    var campo = COLUNA_MAP_MEDIDAS[normalizeHeader(h)];
+    if(!campo) return;
+    var val = rawRow[h];
+    if(val === undefined || val === null || val === '') return;
+    val = (CAMPOS_DATA_MEDIDAS.indexOf(campo) !== -1) ? formatarDataCelula(val) : String(val).trim();
+    obj[campo] = val;
+  });
+  return obj;
+}
+
+/* Converte uma medida disciplinar (objeto camelCase do app) pra linha do
+   Supabase (snake_case) — usado pelo INSERT em lote da importação. A
+   matrícula não vem da planilha, então fica em branco (pode ser
+   preenchida depois editando o registro e usando a lupa). */
+function medidaDisciplinarParaLinha(p){
+  return {
+    matricula: null,
+    nome: p.nome || null,
+    funcao: p.funcao || null,
+    centro_custo: p.centroCusto || null,
+    data: dataBRParaISO(p.data),
+    situacao: p.situacao || null,
+    alimentado_protheus: p.alimentadoProtheus || null,
+    motivo: p.motivo || null,
+    solicitante: p.solicitante || null,
+    gestor_cc: p.gestorCc || null,
+    status: p.status || null,
+    data_alimentacao: dataBRParaISO(p.dataAlimentacao)
+  };
+}
+
+function handleImportFileMedidas(file){
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    impmMsg('A biblioteca de leitura de planilhas ainda não carregou. Aguarde alguns segundos e tente novamente.', 'err');
+    return;
+  }
+  $('impm-fname').textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', cellDates: true });
+      var sheet = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      processarLinhasImportacaoMedidas(rows);
+    }catch(err){
+      impmMsg('Não foi possível ler o arquivo. Confira se é uma planilha válida (.xlsx, .xls ou .csv). Detalhe: '+esc(err.message), 'err');
+    }
+  };
+  reader.onerror = function(){ impmMsg('Erro ao ler o arquivo selecionado.', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function impmMsg(texto, tipo){
+  var el = $('impm-msg'); el.className = 'func-msg ' + (tipo||'info'); el.innerHTML = texto;
+}
+function impmMsgClear(){ var el = $('impm-msg'); el.className = 'func-msg'; el.innerHTML = ''; }
+
+function processarLinhasImportacaoMedidas(rows){
+  impmMsgClear();
+  if(!rows.length){
+    impmMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
+    return;
+  }
+  var mapeados = [];
+  rows.forEach(function(r){
+    var p = mapRowToMedida(r);
+    /* Só descarta uma linha se ela estiver 100% em branco (nenhuma coluna
+       reconhecida) — mesmo padrão da Importar Processos: uma linha sem
+       Colaborador ainda é importada, só entra na estatística de aviso. */
+    if(!Object.keys(p).length) return;
+    mapeados.push(p);
+  });
+  if(!mapeados.length){
+    impmMsg('Nenhuma coluna foi reconhecida na planilha. Confira se a primeira linha contém os cabeçalhos esperados (Colaborador, Função, Data, Situação, Alimentado no Protheus, CC, Motivo, Solicitante, Gestor do CC, Status, Data da Alimentação).', 'err');
+    $('impm-summary').style.display = 'none';
+    $('impm-confirm-bar').style.display = 'none';
+    $('impm-table').style.display = 'none';
+    return;
+  }
+  var semNome = mapeados.filter(function(p){ return !p.nome; }).length;
+
+  state.importMedidasPreview = mapeados;
+  $('impm-stat-total').textContent = rows.length;
+  $('impm-stat-semnome').textContent = semNome;
+  $('impm-summary').style.display = 'flex';
+  $('impm-confirm-bar').style.display = 'flex';
+  renderImportMedidasPreviewTable(mapeados);
+  impmMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — cada uma vira um registro próprio em Medidas Disciplinares. Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+}
+
+function renderImportMedidasPreviewTable(lista){
+  $('impm-table').style.display = 'table';
+  $('impm-tbody').innerHTML = lista.map(function(p){
+    return '<tr>'
+      + '<td>'+esc(p.nome)+'</td>'
+      + '<td>'+esc(p.funcao)+'</td>'
+      + '<td>'+esc(p.data)+'</td>'
+      + '<td>'+esc(p.situacao)+'</td>'
+      + '<td>'+esc(p.alimentadoProtheus)+'</td>'
+      + '<td>'+esc(p.centroCusto)+'</td>'
+      + '<td>'+esc(p.motivo)+'</td>'
+      + '<td>'+esc(p.solicitante)+'</td>'
+      + '<td>'+esc(p.gestorCc)+'</td>'
+      + '<td>'+esc(p.status)+'</td>'
+      + '<td>'+esc(p.dataAlimentacao)+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function confirmarImportacaoMedidas(){
+  if(!state.importMedidasPreview.length) return;
+  aplicarImportacaoMedidas();
+}
+
+async function aplicarImportacaoMedidas(){
+  if(!state.importMedidasPreview.length) return;
+  var linhas = state.importMedidasPreview.map(medidaDisciplinarParaLinha);
+  var qtd = linhas.length;
+
+  state.importMedidasPreview = [];
+  $('impm-summary').style.display = 'none';
+  $('impm-confirm-bar').style.display = 'none';
+  $('impm-table').style.display = 'none';
+  $('impm-fname').textContent = '';
+  $('impm-file-input').value = '';
+  impmMsg(qtd+' medida(s) disciplinar(es) importada(s) — salvando no Supabase agora… <a onclick="abrirMedidasDisciplinares()">Ver Medidas Disciplinares</a>', 'ok');
+  toast(qtd+' medida(s) disciplinar(es) importada(s). Salvando no Supabase…');
+
+  var falhas = 0;
+  var primeiroErro = null;
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      var resp = await sbClient.from('dp_medidas_disciplinares').insert(lote);
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao importar medidas disciplinares (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas){
+    toast(qtd + ' medida(s) disciplinar(es) salva(s) no Supabase.');
+  } else {
+    toast(dpFormatarErroSupabase((qtd-falhas)+' medida(s) salva(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+  }
+}
+
+function cancelarImportacaoMedidas(){
+  state.importMedidasPreview = [];
+  $('impm-summary').style.display = 'none';
+  $('impm-confirm-bar').style.display = 'none';
+  $('impm-table').style.display = 'none';
+  $('impm-fname').textContent = '';
+  $('impm-file-input').value = '';
+  impmMsgClear();
+}
+
+function abrirImportacaoMedidasDisciplinares(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'flex';
 }
 
 /* Liga o drag-and-drop de uma zona de importação genérica (usado tanto pela
@@ -5470,6 +5743,7 @@ function initImportDropzoneGenerico(dzId, handler){
 function initImportDropzone(){ initImportDropzoneGenerico('imp-dropzone', handleImportFile); }
 function initImportDropzoneProcessos(){ initImportDropzoneGenerico('impp-dropzone', handleImportFileProcessos); }
 function initImportDropzoneProcessosArquivados(){ initImportDropzoneGenerico('impa-dropzone', handleImportFileProcessosArquivados); }
+function initImportDropzoneMedidas(){ initImportDropzoneGenerico('impm-dropzone', handleImportFileMedidas); }
 
 /* ================= DASHBOARDS ================= */
 /* Método: forma pela função do dado -> cor computada (paleta validada do
@@ -5688,17 +5962,17 @@ function vizKpiRow(tiles){
 
 /* ---- navegação das abas ---- */
 function abrirDashboardQuadro(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('quadro');
 }
 function abrirDashboardIndicadores(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('indicadores');
 }
 function abrirDashboardProvisoes(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('provisoes');
 }
@@ -6088,6 +6362,7 @@ initAmbienteScreen();
 initImportDropzone();
 initImportDropzoneProcessos();
 initImportDropzoneProcessosArquivados();
+initImportDropzoneMedidas();
 /* dpCarregarDadosIniciais() só é chamada depois de um login bem-sucedido
    (ver loginEntrarComoUsuario) — antes, ela rodava aqui direto no carregamento
    da página, o que buscava CPF/RG/salário de todos os colaboradores pro
