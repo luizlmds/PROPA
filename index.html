@@ -624,6 +624,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   /* ===== Rotina: Importar Medidas Disciplinares (Jurídico > Medidas Disciplinares) —
      mesma ideia, planilha e colunas diferentes. ===== */
   #view-importacao-medidas{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  /* ===== Rotina: Importar Pagamento (Jurídico > Pagamentos) —
+     mesma ideia, planilha e colunas diferentes. ===== */
+  #view-importacao-pagamentos{display:none;flex-direction:column;flex:1;overflow:hidden;}
   .imp-intro{margin:0 14px 12px;font-size:12.5px;color:#666;max-width:900px;}
   .imp-intro b{color:#444;}
   .imp-dropzone{
@@ -1440,6 +1443,64 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
       </div>
 
+      <!-- ===== Rotina: Importar Pagamento (Jurídico > Pagamentos) ===== -->
+      <div id="view-importacao-pagamentos">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Jurídico &gt; Pagamentos</div>
+            <h1>Importar Pagamento</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+        <div class="imp-intro">
+          Selecione a planilha de pagamentos para importar. A primeira linha deve conter os cabeçalhos das colunas
+          (Processo, Nome, Status, Categoria, Data de Pagamento, Valor, Forma Pagamento, Referencia, Parcela,
+          Parcelas, Integração, Pagamento). Cada linha da planilha vira um registro próprio em <b>Pagamentos</b> — a
+          importação não mescla nem substitui pagamentos já cadastrados, mesmo que o processo ou o nome se repita
+          (é assim que a planilha modelo já vem, com uma linha por parcela). Formatos aceitos: <b>.xlsx</b>,
+          <b>.xls</b> ou <b>.csv</b>.
+        </div>
+        <div class="imp-dropzone" id="impg-dropzone">
+          <div class="ico">&#128193;</div>
+          <div>Clique para selecionar a planilha, ou arraste o arquivo aqui</div>
+          <input type="file" id="impg-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFilePagamentos(this.files[0])">
+          <button class="btn primary" style="margin-top:12px;" onclick="document.getElementById('impg-file-input').click()">Selecionar Planilha</button>
+          <div class="fname" id="impg-fname"></div>
+        </div>
+        <div class="func-msg" id="impg-msg"></div>
+        <div class="imp-summary" id="impg-summary" style="display:none;">
+          <div class="imp-stat"><div class="num" id="impg-stat-total">0</div><div class="lbl">Linhas na planilha</div></div>
+          <div class="imp-stat warn"><div class="num" id="impg-stat-semprocesso">0</div><div class="lbl">Sem Processo informado (importadas mesmo assim)</div></div>
+        </div>
+        <div class="routine-bar" id="impg-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
+          <div class="flex"></div>
+          <button class="btn" onclick="cancelarImportacaoPagamentos()">Cancelar</button>
+          <button class="btn primary" onclick="confirmarImportacaoPagamentos()">Confirmar Importação</button>
+        </div>
+        <div class="func-wrap">
+          <table class="func" id="impg-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>Processo</th>
+                <th>Nome</th>
+                <th>Status</th>
+                <th>Categoria</th>
+                <th>Dt. Pagamento</th>
+                <th>Valor</th>
+                <th>Forma Pagamento</th>
+                <th>Referência</th>
+                <th>Parcela</th>
+                <th>Parcelas</th>
+                <th>Integração</th>
+                <th>Pagamento</th>
+              </tr>
+            </thead>
+            <tbody id="impg-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== Rotina: Dashboards ===== -->
       <div id="view-dashboard">
         <div class="routine-bar">
@@ -1794,6 +1855,11 @@ var AMBIENTES = [
         itens: ['Medidas Disciplinares','Importar Medidas Disciplinares']
       },
       {
+        titulo: 'Pagamentos',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Pagamentos','Importar Pagamento']
+      },
+      {
         titulo: 'Movimentações',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Andamentos Processuais','Audiências e Prazos']
@@ -1883,6 +1949,7 @@ var state = {
   importProcessosPreview: [], // linhas lidas da planilha de Importar Processos, aguardando confirmação
   importProcessosArquivadosPreview: [], // idem, para a planilha de Processos Arquivados
   importMedidasPreview: [], // idem, para a planilha de Importar Medidas Disciplinares
+  importPagamentosPreview: [], // idem, para a planilha de Importar Pagamento
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -2419,6 +2486,7 @@ function ambVoltar(){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2511,7 +2579,9 @@ var ROTINAS_PRONTAS = {
   'Cadastros::Exames (ASO)': 'abrirExamesOcupacionais',
   'Cadastros::Usuários': 'abrirUsuarios',
   'Medidas Disciplinares::Medidas Disciplinares': 'abrirMedidasDisciplinares',
-  'Medidas Disciplinares::Importar Medidas Disciplinares': 'abrirImportacaoMedidasDisciplinares'
+  'Medidas Disciplinares::Importar Medidas Disciplinares': 'abrirImportacaoMedidasDisciplinares',
+  'Pagamentos::Pagamentos': 'abrirPagamentosJuridico',
+  'Pagamentos::Importar Pagamento': 'abrirImportacaoPagamentos'
 };
 
 function acionarRotina(chave){
@@ -2569,6 +2639,7 @@ function voltarHome(){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2876,12 +2947,54 @@ var CADASTROS_SIMPLES = {
     colunasInlineSelect: {
       status: ['PROCESSO PENDENTE','PROCESSO CONCLUÍDO','EM ANÁLISE','CANCELADO']
     }
+  },
+  jur_pagamentos: {
+    ambiente: 'Jurídico',
+    secao: 'Pagamentos',
+    titulo: 'Pagamentos',
+    tabela: 'jur_pagamentos',
+    instrucao: 'Cadastre e acompanhe os pagamentos vinculados a processos — mesmos campos da planilha modelo, todos editáveis. Clique numa linha da tabela para editar tudo, ou mude Status/Pagamento direto na lista usando as listas suspensas dessas colunas. Use "Importar Pagamento" para trazer tudo direto da planilha.',
+    campoBusca: ['numero_processo','nome'],
+    campos: [
+      { chave:'numero_processo', label:'Processo', tipo:'text' },
+      { chave:'nome', label:'Nome', tipo:'text', obrigatorio:true, largura:'full' },
+      { chave:'status', label:'Status', tipo:'text' },
+      { chave:'categoria', label:'Categoria', tipo:'text' },
+      { chave:'data_pagamento', label:'Data de Pagamento', tipo:'date' },
+      { chave:'valor', label:'Valor', tipo:'number' },
+      { chave:'forma_pagamento', label:'Forma de Pagamento', tipo:'text' },
+      { chave:'referencia', label:'Referência', tipo:'text' },
+      { chave:'parcela', label:'Parcela', tipo:'inteiro' },
+      { chave:'parcelas_totais', label:'Parcelas', tipo:'inteiro' },
+      { chave:'integracao', label:'Integração', tipo:'text' },
+      { chave:'pagamento', label:'Pagamento', tipo:'text' }
+    ],
+    colunasTabela: ['numero_processo','nome','status','categoria','data_pagamento','valor','forma_pagamento','referencia','parcela','parcelas_totais','pagamento'],
+    /* Status e Pagamento ganham lista suspensa editável direto na linha,
+       mesma mecânica já usada em Processos/Medidas Disciplinares. Base de
+       opções "conhecidas" (a planilha real tem grafias inconsistentes, tipo
+       "Pendente"/"pendente"/"realizado ") + valores distintos já existentes
+       nos dados (ver csOpcoesInlineSelect). */
+    colunasInlineSelect: {
+      status: ['Financeiro','Integração','Pagamento','Recebimento'],
+      pagamento: ['Pendente','Realizado']
+    },
+    filtrosColuna: [
+      { chave:'status', label:'Status', tipo:'select' },
+      { chave:'categoria', label:'Categoria', tipo:'select' },
+      { chave:'forma_pagamento', label:'Forma de Pagamento', tipo:'select' },
+      { chave:'referencia', label:'Referência', tipo:'select' },
+      { chave:'pagamento', label:'Pagamento', tipo:'select' },
+      { chave:'data_pagamento', label:'Data de Pagamento', tipo:'daterange' },
+      { chave:'valor', label:'Valor', tipo:'numrange' }
+    ]
   }
 };
 
 function abrirProcessosJuridico(){ abrirCadSimples('jur_processos'); }
 function abrirProcessosArquivados(){ abrirCadSimples('jur_processos_arquivados'); }
 function abrirMedidasDisciplinares(){ abrirCadSimples('medidas_disciplinares'); }
+function abrirPagamentosJuridico(){ abrirCadSimples('jur_pagamentos'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirUsuarios(){
@@ -2918,6 +3031,7 @@ function abrirCadSimples(chave){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-cad-simples').style.display = 'flex';
@@ -3232,6 +3346,11 @@ function csCampoHtml(c, item){
   } else if(c.tipo === 'number'){
     var valFmt = (val === '' || val === null) ? '' : Number(val).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
     inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(valFmt) + '" placeholder="0,00">';
+  } else if(c.tipo === 'inteiro'){
+    /* Número inteiro simples (ex.: Parcela/Parcelas de Pagamentos) — ao
+       contrário de "number", NÃO formata como moeda (sem "R$", sem casas
+       decimais fixas), só um número puro editável. */
+    inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val === '' || val === null ? '' : val) + '" placeholder="0">';
   } else if(c.tipo === 'lookup-colaborador'){
     /* Campo de texto normal (continua editável na mão) + botão de lupa que
        abre dlg-lookup-colaborador — ver abrirLookupColaborador(). O campo
@@ -3374,6 +3493,7 @@ async function salvarCadSimples(){
     var v = el ? el.value : '';
     if(c.obrigatorio && !String(v).trim() && !erroCampo){ erroCampo = 'Preencha o campo "' + c.label + '".'; }
     if(c.tipo === 'number'){ payload[c.chave] = numeroBRParaFloat(v); }
+    else if(c.tipo === 'inteiro'){ payload[c.chave] = numeroBRParaFloat(v); }
     else if(c.tipo === 'date'){ payload[c.chave] = v ? v : null; }
     else { payload[c.chave] = String(v).trim() ? String(v).trim() : null; }
   });
@@ -3426,6 +3546,7 @@ function abrirFuncionarios(){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-funcionarios').style.display = 'flex';
@@ -3505,6 +3626,7 @@ function abrirRescisao(){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-rescisao').style.display = 'flex';
@@ -3523,6 +3645,7 @@ function abrirFerias(){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-ferias').style.display = 'flex';
@@ -4133,6 +4256,7 @@ function abrirSolicPag(tipo){
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'flex';
   $('solicpag-titulo').textContent = 'Solicitação de Pagamento — ' + (tipo==='ferias' ? 'Férias' : 'Rescisão');
@@ -5418,6 +5542,7 @@ function abrirImportacaoProcessos(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-importacao-processos').style.display = 'flex';
 }
 
@@ -5616,6 +5741,7 @@ function abrirImportacaoProcessosArquivados(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'flex';
 }
 
@@ -5816,7 +5942,237 @@ function abrirImportacaoMedidasDisciplinares(){
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
   $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
   $('view-importacao-medidas').style.display = 'flex';
+}
+
+/* ================= ROTINA: IMPORTAR PAGAMENTO (Jurídico > Pagamentos) =================
+   Mesma mecânica das outras importações de planilha do Jurídico — cada linha
+   vira um INSERT novo, sempre, sem upsert (a planilha real tem uma linha por
+   parcela, com Processo/Nome se repetindo entre linhas de propósito). */
+var COLUNA_MAP_PAGAMENTOS = {
+  'processo': 'numeroProcesso',
+  'nome': 'nome',
+  'status': 'status',
+  'categoria': 'categoria',
+  'data de pagamento': 'dataPagamento',
+  'valor': 'valor',
+  'forma pagamento': 'formaPagamento',
+  'referencia': 'referencia',
+  'parcela': 'parcela',
+  'parcelas': 'parcelasTotais',
+  'integracao': 'integracao',
+  'pagamento': 'pagamento'
+};
+var CAMPOS_DATA_PAGAMENTOS = ['dataPagamento'];
+var CAMPOS_NUMERO_PAGAMENTOS = ['valor', 'parcela', 'parcelasTotais'];
+
+/* Igual numeroBRParaFloat, mas também entende "R$ 4.500.00" — a planilha real
+   mistura números puros (4500) com texto assim, ponto usado tanto como
+   separador de milhar quanto de centavos. Com 2+ pontos e nenhuma vírgula,
+   assume que só o ÚLTIMO ponto é o separador decimal (então "4.500.00" vira
+   4500.00, não 4.5). */
+function valorParaFloatFlexivel(v){
+  if(v === null || v === undefined || v === '') return null;
+  if(typeof v === 'number') return isNaN(v) ? null : v;
+  var str = String(v).trim().replace(/^R\$\s*/i, '').trim();
+  if(!str) return null;
+  if(/,/.test(str)){
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else {
+    var partes = str.split('.');
+    if(partes.length > 2){ str = partes.slice(0, -1).join('') + '.' + partes[partes.length - 1]; }
+  }
+  var n = parseFloat(str);
+  return isNaN(n) ? null : n;
+}
+
+function mapRowToPagamento(rawRow){
+  var obj = {};
+  Object.keys(rawRow).forEach(function(h){
+    var campo = COLUNA_MAP_PAGAMENTOS[normalizeHeader(h)];
+    if(!campo) return;
+    var val = rawRow[h];
+    if(val === undefined || val === null || val === '') return;
+    /* Uma célula pode chegar como objeto Date mesmo em colunas que não são
+       "de data" pra esse cadastro (ex.: "Pagamento" às vezes traz a própria
+       data de quitação em vez de um status) — formata pra DD/MM/AAAA em
+       qualquer caso, texto puro do contrário. Campos numéricos passam pelo
+       parser flexível (aceita "R$ 4.500.00" e números puros). */
+    if(val instanceof Date){ val = formatarDataCelula(val); }
+    else if(CAMPOS_NUMERO_PAGAMENTOS.indexOf(campo) !== -1){
+      var num = valorParaFloatFlexivel(val);
+      if(num === null) return;
+      val = num;
+    }
+    else { val = String(val).trim(); }
+    obj[campo] = val;
+  });
+  return obj;
+}
+
+/* Converte um pagamento (objeto camelCase do app) pra linha do Supabase
+   (snake_case) — usado pelo INSERT em lote da importação. */
+function jurPagamentoParaLinha(p){
+  return {
+    numero_processo: p.numeroProcesso || null,
+    nome: p.nome || null,
+    status: p.status || null,
+    categoria: p.categoria || null,
+    data_pagamento: dataBRParaISO(p.dataPagamento),
+    valor: (p.valor === undefined || p.valor === null) ? null : p.valor,
+    forma_pagamento: p.formaPagamento || null,
+    referencia: p.referencia || null,
+    parcela: (p.parcela === undefined || p.parcela === null) ? null : p.parcela,
+    parcelas_totais: (p.parcelasTotais === undefined || p.parcelasTotais === null) ? null : p.parcelasTotais,
+    integracao: p.integracao || null,
+    pagamento: p.pagamento || null
+  };
+}
+
+function handleImportFilePagamentos(file){
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    impgMsg('A biblioteca de leitura de planilhas ainda não carregou. Aguarde alguns segundos e tente novamente.', 'err');
+    return;
+  }
+  $('impg-fname').textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', cellDates: true });
+      var sheet = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      processarLinhasImportacaoPagamentos(rows);
+    }catch(err){
+      impgMsg('Não foi possível ler o arquivo. Confira se é uma planilha válida (.xlsx, .xls ou .csv). Detalhe: '+esc(err.message), 'err');
+    }
+  };
+  reader.onerror = function(){ impgMsg('Erro ao ler o arquivo selecionado.', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function impgMsg(texto, tipo){
+  var el = $('impg-msg'); el.className = 'func-msg ' + (tipo||'info'); el.innerHTML = texto;
+}
+function impgMsgClear(){ var el = $('impg-msg'); el.className = 'func-msg'; el.innerHTML = ''; }
+
+function processarLinhasImportacaoPagamentos(rows){
+  impgMsgClear();
+  if(!rows.length){
+    impgMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
+    return;
+  }
+  var mapeados = [];
+  rows.forEach(function(r){
+    var p = mapRowToPagamento(r);
+    /* Só descarta uma linha se ela estiver 100% em branco (nenhuma coluna
+       reconhecida) — mesmo padrão das outras importações do Jurídico: uma
+       linha sem Processo ainda é importada, só entra na estatística de aviso. */
+    if(!Object.keys(p).length) return;
+    mapeados.push(p);
+  });
+  if(!mapeados.length){
+    impgMsg('Nenhuma coluna foi reconhecida na planilha. Confira se a primeira linha contém os cabeçalhos esperados (Processo, Nome, Status, Categoria, Data de Pagamento, Valor, Forma Pagamento, Referencia, Parcela, Parcelas, Integração, Pagamento).', 'err');
+    $('impg-summary').style.display = 'none';
+    $('impg-confirm-bar').style.display = 'none';
+    $('impg-table').style.display = 'none';
+    return;
+  }
+  var semProcesso = mapeados.filter(function(p){ return !p.numeroProcesso || p.numeroProcesso === '0'; }).length;
+
+  state.importPagamentosPreview = mapeados;
+  $('impg-stat-total').textContent = rows.length;
+  $('impg-stat-semprocesso').textContent = semProcesso;
+  $('impg-summary').style.display = 'flex';
+  $('impg-confirm-bar').style.display = 'flex';
+  renderImportPagamentosPreviewTable(mapeados);
+  impgMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — cada uma vira um registro próprio em Pagamentos. Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+}
+
+function renderImportPagamentosPreviewTable(lista){
+  $('impg-table').style.display = 'table';
+  $('impg-tbody').innerHTML = lista.map(function(p){
+    return '<tr>'
+      + '<td>'+esc(p.numeroProcesso)+'</td>'
+      + '<td>'+esc(p.nome)+'</td>'
+      + '<td>'+esc(p.status)+'</td>'
+      + '<td>'+esc(p.categoria)+'</td>'
+      + '<td>'+esc(p.dataPagamento)+'</td>'
+      + '<td>'+esc(fmtValorBR(p.valor))+'</td>'
+      + '<td>'+esc(p.formaPagamento)+'</td>'
+      + '<td>'+esc(p.referencia)+'</td>'
+      + '<td>'+esc(p.parcela)+'</td>'
+      + '<td>'+esc(p.parcelasTotais)+'</td>'
+      + '<td>'+esc(p.integracao)+'</td>'
+      + '<td>'+esc(p.pagamento)+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function confirmarImportacaoPagamentos(){
+  if(!state.importPagamentosPreview.length) return;
+  aplicarImportacaoPagamentos();
+}
+
+async function aplicarImportacaoPagamentos(){
+  if(!state.importPagamentosPreview.length) return;
+  var linhas = state.importPagamentosPreview.map(jurPagamentoParaLinha);
+  var qtd = linhas.length;
+
+  state.importPagamentosPreview = [];
+  $('impg-summary').style.display = 'none';
+  $('impg-confirm-bar').style.display = 'none';
+  $('impg-table').style.display = 'none';
+  $('impg-fname').textContent = '';
+  $('impg-file-input').value = '';
+  impgMsg(qtd+' pagamento(s) importado(s) — salvando no Supabase agora… <a onclick="abrirPagamentosJuridico()">Ver Pagamentos</a>', 'ok');
+  toast(qtd+' pagamento(s) importado(s). Salvando no Supabase…');
+
+  var falhas = 0;
+  var primeiroErro = null;
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      var resp = await sbClient.from('jur_pagamentos').insert(lote);
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao importar pagamentos (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas){
+    toast(qtd + ' pagamento(s) salvo(s) no Supabase.');
+  } else {
+    toast(dpFormatarErroSupabase((qtd-falhas)+' pagamento(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+  }
+}
+
+function cancelarImportacaoPagamentos(){
+  state.importPagamentosPreview = [];
+  $('impg-summary').style.display = 'none';
+  $('impg-confirm-bar').style.display = 'none';
+  $('impg-table').style.display = 'none';
+  $('impg-fname').textContent = '';
+  $('impg-file-input').value = '';
+  impgMsgClear();
+}
+
+function abrirImportacaoPagamentos(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'flex';
 }
 
 /* Liga o drag-and-drop de uma zona de importação genérica (usado tanto pela
@@ -5837,6 +6193,7 @@ function initImportDropzone(){ initImportDropzoneGenerico('imp-dropzone', handle
 function initImportDropzoneProcessos(){ initImportDropzoneGenerico('impp-dropzone', handleImportFileProcessos); }
 function initImportDropzoneProcessosArquivados(){ initImportDropzoneGenerico('impa-dropzone', handleImportFileProcessosArquivados); }
 function initImportDropzoneMedidas(){ initImportDropzoneGenerico('impm-dropzone', handleImportFileMedidas); }
+function initImportDropzonePagamentos(){ initImportDropzoneGenerico('impg-dropzone', handleImportFilePagamentos); }
 
 /* ================= DASHBOARDS ================= */
 /* Método: forma pela função do dado -> cor computada (paleta validada do
@@ -6055,17 +6412,17 @@ function vizKpiRow(tiles){
 
 /* ---- navegação das abas ---- */
 function abrirDashboardQuadro(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('quadro');
 }
 function abrirDashboardIndicadores(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('indicadores');
 }
 function abrirDashboardProvisoes(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('provisoes');
 }
@@ -6456,6 +6813,7 @@ initImportDropzone();
 initImportDropzoneProcessos();
 initImportDropzoneProcessosArquivados();
 initImportDropzoneMedidas();
+initImportDropzonePagamentos();
 /* dpCarregarDadosIniciais() só é chamada depois de um login bem-sucedido
    (ver loginEntrarComoUsuario) — antes, ela rodava aqui direto no carregamento
    da página, o que buscava CPF/RG/salário de todos os colaboradores pro
