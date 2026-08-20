@@ -581,6 +581,14 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .cs-senha-ok{color:#2e8b3d;font-weight:600;font-size:11.5px;}
   .cs-senha-pendente{color:#b8860b;font-weight:600;font-size:11.5px;}
   .cs-senha-reset{margin-left:8px;font-size:11.5px;}
+  /* Lista suspensa editável direto na linha da tabela (ver
+     cfg.colunasInlineSelect — hoje Status/Objeto de Processos). */
+  .cs-inline-select{
+    width:100%;min-width:190px;font-size:12px;padding:4px 6px;border:1px solid transparent;border-radius:4px;
+    background:transparent;color:inherit;cursor:pointer;
+  }
+  .cs-inline-select:hover{border-color:#ccc;background:#f7f9fb;}
+  .cs-inline-select:focus{outline:none;border-color:var(--azul);background:#fff;}
 
   /* ===== Rotina: Importação de Ativo (planilha) ===== */
   #view-importacao{display:none;flex-direction:column;flex:1;overflow:hidden;}
@@ -588,6 +596,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
      as mesmas classes .imp-* da Importação de Ativo acima, só muda os ids
      internos pra não colidir com a tela de colaboradores. ===== */
   #view-importacao-processos{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  /* ===== Rotina: Importar Processos (Jurídico > Processos Arquivados) —
+     mesma ideia, planilha e colunas diferentes. ===== */
+  #view-importacao-processos-arquivados{display:none;flex-direction:column;flex:1;overflow:hidden;}
   .imp-intro{margin:0 14px 12px;font-size:12.5px;color:#666;max-width:900px;}
   .imp-intro b{color:#444;}
   .imp-dropzone{
@@ -1287,6 +1298,64 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
       </div>
 
+      <!-- ===== Rotina: Importar Processos (Jurídico > Processos Arquivados) ===== -->
+      <div id="view-importacao-processos-arquivados">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Jurídico &gt; Processos Arquivados</div>
+            <h1>Importar Processos</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+        <div class="imp-intro">
+          Selecione a planilha de processos arquivados/encerrados para importar. A primeira linha deve conter os
+          cabeçalhos das colunas (Filial, CC, Número do Processo, Polo Ativo, Data de Distribuição, Valor da Causa,
+          Valor Pago, Data do Encerramento, Objeto, Motivo do Encerramento, Vara/Câmara, Polo Passivo). Cada linha
+          da planilha vira um registro próprio em <b>Processos Arquivados</b> — a importação não mescla nem
+          substitui processos já cadastrados, mesmo que o número do processo se repita. Formatos aceitos:
+          <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b>.
+        </div>
+        <div class="imp-dropzone" id="impa-dropzone">
+          <div class="ico">&#128193;</div>
+          <div>Clique para selecionar a planilha, ou arraste o arquivo aqui</div>
+          <input type="file" id="impa-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFileProcessosArquivados(this.files[0])">
+          <button class="btn primary" style="margin-top:12px;" onclick="document.getElementById('impa-file-input').click()">Selecionar Planilha</button>
+          <div class="fname" id="impa-fname"></div>
+        </div>
+        <div class="func-msg" id="impa-msg"></div>
+        <div class="imp-summary" id="impa-summary" style="display:none;">
+          <div class="imp-stat"><div class="num" id="impa-stat-total">0</div><div class="lbl">Linhas na planilha</div></div>
+          <div class="imp-stat warn"><div class="num" id="impa-stat-semnum">0</div><div class="lbl">Sem Número do Processo (importadas mesmo assim)</div></div>
+        </div>
+        <div class="routine-bar" id="impa-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
+          <div class="flex"></div>
+          <button class="btn" onclick="cancelarImportacaoProcessosArquivados()">Cancelar</button>
+          <button class="btn primary" onclick="confirmarImportacaoProcessosArquivados()">Confirmar Importação</button>
+        </div>
+        <div class="func-wrap">
+          <table class="func" id="impa-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>Filial</th>
+                <th>CC</th>
+                <th>Nº do Processo</th>
+                <th>Polo Ativo</th>
+                <th>Polo Passivo</th>
+                <th>Dt. Distribuição</th>
+                <th>Valor da Causa</th>
+                <th>Valor Pago</th>
+                <th>Dt. Encerramento</th>
+                <th>Objeto</th>
+                <th>Motivo do Encerramento</th>
+                <th>Vara/Câmara</th>
+              </tr>
+            </thead>
+            <tbody id="impa-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== Rotina: Dashboards ===== -->
       <div id="view-dashboard">
         <div class="routine-bar">
@@ -1320,10 +1389,11 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         <div class="filtro-bar">
           <span class="ico-busca">&#128269;</span>
           <input type="text" id="cs-filtro-busca" class="filtro-busca" placeholder="Buscar..." oninput="renderCadSimplesTabela()">
-          <button class="btn" onclick="$('cs-filtro-busca').value='';renderCadSimplesTabela();">Limpar filtro</button>
+          <button class="btn" onclick="csLimparFiltros()">Limpar filtro</button>
           <button class="btn primary" onclick="csAbrirNovo()">+ Novo</button>
           <div class="filtro-count" id="cs-filtro-count"></div>
         </div>
+        <div class="filtro-bar" id="cs-filtro-colunas" style="display:none;flex-wrap:wrap;row-gap:8px;"></div>
         <div class="func-msg info" id="cs-msg"></div>
         <div class="func-wrap">
           <div id="cs-empty" class="func-empty" style="display:none;"></div>
@@ -1616,6 +1686,11 @@ var AMBIENTES = [
         itens: ['Processos','Importar Processos']
       },
       {
+        titulo: 'Processos Arquivados',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Processos Arquivados','Importar Processos']
+      },
+      {
         titulo: 'Movimentações',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Andamentos Processuais','Audiências e Prazos']
@@ -1703,6 +1778,7 @@ var state = {
   importPreview: [],   // linhas lidas da planilha, aguardando confirmação
   importRemocoes: [],  // colaboradores cadastrados que sumiram da planilha, aguardando confirmação separada
   importProcessosPreview: [], // linhas lidas da planilha de Importar Processos, aguardando confirmação
+  importProcessosArquivadosPreview: [], // idem, para a planilha de Processos Arquivados
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -2210,6 +2286,7 @@ function ambVoltar(){
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2296,6 +2373,8 @@ var ROTINAS_PRONTAS = {
   'Solicitação de Pagamento::Rescisão': 'abrirSolicPagRescisao',
   'Processos Ativos::Processos': 'abrirProcessosJuridico',
   'Processos Ativos::Importar Processos': 'abrirImportacaoProcessos',
+  'Processos Arquivados::Processos Arquivados': 'abrirProcessosArquivados',
+  'Processos Arquivados::Importar Processos': 'abrirImportacaoProcessosArquivados',
   'Cadastros::Beneficiários': 'abrirBeneficiarios',
   'Cadastros::Exames (ASO)': 'abrirExamesOcupacionais',
   'Cadastros::Usuários': 'abrirUsuarios'
@@ -2354,6 +2433,7 @@ function voltarHome(){
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -2474,8 +2554,8 @@ var CADASTROS_SIMPLES = {
     secao: 'Processos Ativos',
     titulo: 'Processos',
     tabela: 'jur_processos',
-    instrucao: 'Cadastre e acompanhe os processos judiciais da empresa — mesmos campos da planilha modelo (Filial, CC, Polo Ativo, Data de Distribuição, Nº do Processo, Objeto, Valor da Causa Atualizado e Status), todos editáveis. Clique numa linha da tabela para editar, ou use "Importar Processos" para trazer tudo direto da planilha.',
-    campoBusca: ['numero_processo','polo_ativo','objeto'],
+    instrucao: 'Cadastre e acompanhe os processos judiciais da empresa — mesmos campos da planilha modelo (Filial, CC, Polo Ativo, Data de Distribuição, Nº do Processo, Objeto, Valor da Causa Atualizado e Status), todos editáveis. Clique numa linha da tabela para editar tudo, ou mude Status/Objeto direto na lista usando as listas suspensas dessas colunas. Use os filtros abaixo pra localizar processos, ou "Importar Processos" para trazer tudo direto da planilha.',
+    campoBusca: ['numero_processo','polo_ativo'],
     campos: [
       { chave:'filial', label:'Filial', tipo:'text' },
       { chave:'centro_custo', label:'CC (Centro de Custo)', tipo:'text' },
@@ -2486,7 +2566,72 @@ var CADASTROS_SIMPLES = {
       { chave:'valor_causa_atualizado', label:'Valor da Causa Atualizado', tipo:'number' },
       { chave:'status', label:'Status', tipo:'text' }
     ],
-    colunasTabela: ['filial','centro_custo','polo_ativo','data_distribuicao','numero_processo','objeto','valor_causa_atualizado','status']
+    colunasTabela: ['filial','centro_custo','polo_ativo','data_distribuicao','numero_processo','objeto','valor_causa_atualizado','status'],
+    /* Colunas que ganham uma lista suspensa editável direto na linha da
+       tabela (sem precisar abrir o diálogo de edição) — pedido do usuário
+       especificamente para Status e Objeto. O array é uma base de opções
+       "conhecidas" (aparecem sempre, mesmo que nenhum processo use ainda);
+       na hora de montar cada <select> isso é combinado com os valores
+       distintos já existentes nos dados (ver csOpcoesInlineSelect), então
+       um status/objeto novo vindo de uma importação futura não fica de fora. */
+    colunasInlineSelect: {
+      status: ['ATIVO','PROCEDENTE EMPRESA','IMPROCEDENTE EMPRESA','PARCIALMENTE PROCEDENTE','ACORDO','ARQUIVADO'],
+      objeto: []
+    },
+    /* Filtros por coluna, mostrados numa barra própria acima da tabela (além
+       da busca livre por Nº do Processo/Polo Ativo). "select" lista os
+       valores distintos já cadastrados; "daterange"/"numrange" são faixas
+       De/Até e Mín/Máx. */
+    filtrosColuna: [
+      { chave:'filial', label:'Filial', tipo:'select' },
+      { chave:'centro_custo', label:'CC', tipo:'select' },
+      { chave:'status', label:'Status', tipo:'select' },
+      { chave:'objeto', label:'Objeto', tipo:'select' },
+      { chave:'data_distribuicao', label:'Data de Distribuição', tipo:'daterange' },
+      { chave:'valor_causa_atualizado', label:'Valor da Causa Atualizado', tipo:'numrange' }
+    ]
+  },
+  jur_processos_arquivados: {
+    ambiente: 'Jurídico',
+    secao: 'Processos Arquivados',
+    titulo: 'Processos Arquivados',
+    tabela: 'jur_processos_arquivados',
+    instrucao: 'Cadastre e acompanhe os processos judiciais já encerrados — mesmos campos da planilha modelo (Filial, CC, Nº do Processo, Polo Ativo, Polo Passivo, Data de Distribuição, Valor da Causa, Valor Pago, Data do Encerramento, Objeto, Motivo do Encerramento e Vara/Câmara), todos editáveis. Clique numa linha da tabela para editar tudo, ou mude Motivo do Encerramento/Objeto direto na lista usando as listas suspensas dessas colunas. Use os filtros abaixo pra localizar processos, ou "Importar Processos" para trazer tudo direto da planilha.',
+    campoBusca: ['numero_processo','polo_ativo'],
+    campos: [
+      { chave:'filial', label:'Filial', tipo:'text' },
+      { chave:'centro_custo', label:'CC (Centro de Custo)', tipo:'text' },
+      { chave:'numero_processo', label:'Número do Processo', tipo:'text' },
+      { chave:'polo_ativo', label:'Polo Ativo', tipo:'text', largura:'full', obrigatorio:true },
+      { chave:'polo_passivo', label:'Polo Passivo', tipo:'text', largura:'full' },
+      { chave:'data_distribuicao', label:'Data de Distribuição', tipo:'date' },
+      { chave:'valor_causa', label:'Valor da Causa', tipo:'number' },
+      { chave:'valor_pago', label:'Valor Pago', tipo:'number' },
+      { chave:'data_encerramento', label:'Data do Encerramento', tipo:'date' },
+      { chave:'objeto', label:'Objeto', tipo:'text' },
+      { chave:'motivo_encerramento', label:'Motivo do Encerramento', tipo:'text' },
+      { chave:'vara_camara', label:'Vara/Câmara', tipo:'text' }
+    ],
+    colunasTabela: ['filial','centro_custo','numero_processo','polo_ativo','data_distribuicao','valor_causa','valor_pago','data_encerramento','objeto','motivo_encerramento'],
+    /* Mesma ideia da tela de Processos Ativos: Objeto e Motivo do Encerramento
+       ganham lista suspensa editável direto na linha (Motivo do Encerramento
+       é o equivalente, aqui, do "Status" dos processos ativos — o resultado
+       final do processo). Base de opções conhecidas + valores distintos já
+       cadastrados (ver csOpcoesInlineSelect). */
+    colunasInlineSelect: {
+      motivo_encerramento: ['Acordo','Julgado procedente','Julgado Improcedente','Processo Extinto','Decisão judicial com resolução de mérito','Decisão judicial sem resolução de mérito'],
+      objeto: []
+    },
+    filtrosColuna: [
+      { chave:'filial', label:'Filial', tipo:'select' },
+      { chave:'centro_custo', label:'CC', tipo:'select' },
+      { chave:'motivo_encerramento', label:'Motivo do Encerramento', tipo:'select' },
+      { chave:'objeto', label:'Objeto', tipo:'select' },
+      { chave:'data_distribuicao', label:'Data de Distribuição', tipo:'daterange' },
+      { chave:'data_encerramento', label:'Data do Encerramento', tipo:'daterange' },
+      { chave:'valor_causa', label:'Valor da Causa', tipo:'numrange' },
+      { chave:'valor_pago', label:'Valor Pago', tipo:'numrange' }
+    ]
   },
   ben_beneficiarios: {
     ambiente: 'Benefício',
@@ -2550,6 +2695,7 @@ var CADASTROS_SIMPLES = {
 };
 
 function abrirProcessosJuridico(){ abrirCadSimples('jur_processos'); }
+function abrirProcessosArquivados(){ abrirCadSimples('jur_processos_arquivados'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirUsuarios(){
@@ -2565,7 +2711,10 @@ function abrirUsuarios(){
   abrirCadSimples('usuarios');
 }
 
-var stateCadSimples = { chave: null, dados: [], editandoId: null };
+/* filtros: chave do campo -> valor selecionado (tipo "select") ou {de,ate}/{min,max}
+   (tipo "daterange"/"numrange") — só usado por cadastros cujo cfg tem
+   filtrosColuna (hoje só jur_processos). */
+var stateCadSimples = { chave: null, dados: [], editandoId: null, filtros: {} };
 
 function abrirCadSimples(chave){
   var cfg = CADASTROS_SIMPLES[chave];
@@ -2573,6 +2722,7 @@ function abrirCadSimples(chave){
   stateCadSimples.chave = chave;
   stateCadSimples.dados = [];
   stateCadSimples.editandoId = null;
+  stateCadSimples.filtros = {};
 
   $('view-home').style.display = 'none';
   $('view-funcionarios').style.display = 'none';
@@ -2580,6 +2730,7 @@ function abrirCadSimples(chave){
   $('view-ferias').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-cad-simples').style.display = 'flex';
@@ -2590,9 +2741,29 @@ function abrirCadSimples(chave){
   var msg = $('cs-msg');
   if(cfg.instrucao){ msg.textContent = cfg.instrucao; msg.style.display = 'block'; }
   else { msg.style.display = 'none'; }
+  $('cs-filtro-colunas').style.display = cfg.filtrosColuna ? 'flex' : 'none';
+  $('cs-filtro-colunas').innerHTML = '';
 
   renderCadSimplesCabecalho(cfg);
   carregarCadSimples();
+}
+
+function csLimparFiltros(){
+  $('cs-filtro-busca').value = '';
+  /* Se o usuário tinha acabado de digitar num filtro tipo Mín/Máx/De/Até e
+     clica em "Limpar filtro" sem sair do campo antes, o navegador dispara um
+     "change" nativo pra esse campo no meio da troca de innerHTML abaixo
+     (perda de foco + valor "sujo") — e esse change reaplicaria o próprio
+     filtro que estamos limpando. Por isso: força o blur ANTES de zerar
+     stateCadSimples.filtros, e só zera de novo depois — assim, não importa
+     o que um change tardio faça nesse meio-tempo, a última palavra sobre
+     "os filtros estão vazios" é sempre desta função. */
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  stateCadSimples.filtros = {};
+  var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
+  if(cfg && cfg.filtrosColuna) renderCsFiltroColunas(cfg);
+  stateCadSimples.filtros = {};
+  renderCadSimplesTabela();
 }
 
 function renderCadSimplesCabecalho(cfg){
@@ -2607,6 +2778,110 @@ function renderCadSimplesCabecalho(cfg){
   }).join('') + extra + '<th style="width:60px;">Ações</th></tr>';
 }
 
+/* Valores distintos (não vazios) já presentes em stateCadSimples.dados para
+   uma coluna — usado tanto para montar as opções do filtro por coluna quanto
+   as opções das listas suspensas editáveis inline (csOpcoesInlineSelect). */
+function csValoresDistintos(chave){
+  var vistos = {};
+  var lista = [];
+  stateCadSimples.dados.forEach(function(item){
+    var v = item[chave];
+    if(v === null || v === undefined || v === '') return;
+    v = String(v);
+    if(!vistos[v]){ vistos[v] = true; lista.push(v); }
+  });
+  lista.sort(function(a,b){ return a.localeCompare(b, 'pt-BR'); });
+  return lista;
+}
+
+/* Monta a barra de filtros por coluna (cfg.filtrosColuna) acima da tabela —
+   um <select> com os valores distintos já cadastrados pra colunas tipo
+   "select", ou um par De/Até (data) / Mín/Máx (número) pra "daterange" e
+   "numrange". Chamada de novo a cada carregarCadSimples() (pra pegar valores
+   novos que só a importação trouxe) e a cada csLimparFiltros(). */
+function renderCsFiltroColunas(cfg){
+  var f = stateCadSimples.filtros;
+  $('cs-filtro-colunas').innerHTML = cfg.filtrosColuna.map(function(fc){
+    if(fc.tipo === 'select'){
+      var atual = f[fc.chave] || '';
+      var opcoes = csValoresDistintos(fc.chave);
+      return '<select class="filtro-select" onchange="csFiltroSelectChange(\'' + fc.chave + '\', this.value)">'
+        + '<option value="">' + esc(fc.label) + ': Todos</option>'
+        + opcoes.map(function(o){ return '<option value="' + esc(o) + '"' + (o === atual ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('')
+        + '</select>';
+    }
+    if(fc.tipo === 'daterange'){
+      var r = f[fc.chave] || {};
+      return '<span class="filtro-data-lbl">' + esc(fc.label) + ':</span>'
+        + '<input type="date" class="filtro-data" value="' + esc(r.de || '') + '" onchange="csFiltroRangeChange(\'' + fc.chave + '\',\'de\',this.value)">'
+        + '<span class="filtro-data-lbl">até</span>'
+        + '<input type="date" class="filtro-data" value="' + esc(r.ate || '') + '" onchange="csFiltroRangeChange(\'' + fc.chave + '\',\'ate\',this.value)">';
+    }
+    if(fc.tipo === 'numrange'){
+      var rn = f[fc.chave] || {};
+      return '<span class="filtro-data-lbl">' + esc(fc.label) + ':</span>'
+        + '<input type="text" class="filtro-data" style="width:90px;" placeholder="Mín" value="' + esc(rn.min || '') + '" onchange="csFiltroRangeChange(\'' + fc.chave + '\',\'min\',this.value)">'
+        + '<span class="filtro-data-lbl">até</span>'
+        + '<input type="text" class="filtro-data" style="width:90px;" placeholder="Máx" value="' + esc(rn.max || '') + '" onchange="csFiltroRangeChange(\'' + fc.chave + '\',\'max\',this.value)">';
+    }
+    return '';
+  }).join('');
+}
+
+function csFiltroSelectChange(chave, valor){
+  if(valor){ stateCadSimples.filtros[chave] = valor; }
+  else { delete stateCadSimples.filtros[chave]; }
+  renderCadSimplesTabela();
+}
+
+function csFiltroRangeChange(chave, limite, valor){
+  var atual = stateCadSimples.filtros[chave] || {};
+  atual[limite] = valor || '';
+  if(!atual.de && !atual.ate && !atual.min && !atual.max){ delete stateCadSimples.filtros[chave]; }
+  else { stateCadSimples.filtros[chave] = atual; }
+  renderCadSimplesTabela();
+}
+
+/* Opções da lista suspensa editável inline de uma coluna (ver
+   cfg.colunasInlineSelect): união da base de opções "conhecidas" do cfg com
+   os valores distintos já cadastrados e o valor atual do próprio item — assim
+   um status/objeto que só existe por causa de uma planilha importada nunca
+   fica de fora da lista, e o <select> nunca abre "em branco" perdendo o
+   valor salvo. */
+function csOpcoesInlineSelect(cfg, chave, valorAtual){
+  var vistos = {};
+  var lista = [];
+  (cfg.colunasInlineSelect[chave] || []).forEach(function(v){ if(!vistos[v]){ vistos[v]=true; lista.push(v); } });
+  csValoresDistintos(chave).forEach(function(v){ if(!vistos[v]){ vistos[v]=true; lista.push(v); } });
+  if(valorAtual && !vistos[valorAtual]){ lista.push(valorAtual); }
+  return lista;
+}
+
+/* Atualiza um único campo de um registro direto na tabela (Status/Objeto de
+   Processos, ver cfg.colunasInlineSelect) sem abrir o diálogo de edição.
+   Atualiza local + Supabase; se o Supabase falhar, desfaz a mudança local e
+   avisa — pra tela nunca mostrar um valor que não foi salvo de verdade. */
+async function csAtualizarCampoInline(id, chave, valorNovo){
+  var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
+  if(!cfg) return;
+  var item = stateCadSimples.dados.find(function(d){ return d.id === id; });
+  if(!item) return;
+  var valorAnterior = item[chave];
+  item[chave] = valorNovo;
+  try{
+    var payload = {}; payload[chave] = valorNovo || null;
+    var resp = await sbClient.from(cfg.tabela).update(payload).eq('id', id);
+    if(resp.error) throw resp.error;
+    toast(cfg.titulo + ' atualizado(a).');
+    if(cfg.filtrosColuna) renderCsFiltroColunas(cfg);
+  } catch(erro){
+    item[chave] = valorAnterior;
+    renderCadSimplesTabela();
+    toast(dpFormatarErroSupabase('Não foi possível salvar', erro), true, 9000);
+    console.error('Falha ao atualizar campo "' + chave + '" em ' + cfg.tabela + ':', erro);
+  }
+}
+
 async function carregarCadSimples(){
   var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
   if(!cfg) return;
@@ -2617,6 +2892,7 @@ async function carregarCadSimples(){
     var resp = await sbClient.from(cfg.tabela).select('*').order('created_at', { ascending: false });
     if(resp.error) throw resp.error;
     stateCadSimples.dados = resp.data || [];
+    if(cfg.filtrosColuna) renderCsFiltroColunas(cfg);
     renderCadSimplesTabela();
   } catch(erro){
     $('cs-filtro-count').textContent = '';
@@ -2631,14 +2907,29 @@ function renderCadSimplesTabela(){
   var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
   if(!cfg) return;
   var busca = ($('cs-filtro-busca').value || '').trim().toLowerCase();
+  var filtros = stateCadSimples.filtros || {};
   var lista = stateCadSimples.dados.filter(function(item){
-    if(!busca) return true;
-    return cfg.campoBusca.some(function(chaveCampo){
+    if(busca && !cfg.campoBusca.some(function(chaveCampo){
       return String(item[chaveCampo] || '').toLowerCase().indexOf(busca) >= 0;
+    })) return false;
+    return Object.keys(filtros).every(function(chave){
+      var f = filtros[chave];
+      var v = item[chave];
+      if(typeof f === 'string'){
+        /* filtro tipo "select" — igualdade exata com o valor escolhido */
+        return String(v || '') === f;
+      }
+      /* filtro tipo "daterange" (datas ISO, comparam certo como string) ou
+         "numrange" (número) — cada limite só entra em jogo se preenchido */
+      if(f.de && (!v || v < f.de)) return false;
+      if(f.ate && (!v || v > f.ate)) return false;
+      if(f.min !== undefined && f.min !== '' && (v === null || v === undefined || Number(v) < numeroBRParaFloat(f.min))) return false;
+      if(f.max !== undefined && f.max !== '' && (v === null || v === undefined || Number(v) > numeroBRParaFloat(f.max))) return false;
+      return true;
     });
   });
 
-  $('cs-filtro-count').textContent = lista.length + ' registro(s)';
+  $('cs-filtro-count').textContent = lista.length + ' de ' + stateCadSimples.dados.length + ' registro(s)';
 
   if(!lista.length){
     $('cs-table').style.display = 'none';
@@ -2653,6 +2944,19 @@ function renderCadSimplesTabela(){
 
   $('cs-tbody').innerHTML = lista.map(function(item){
     var tds = cfg.colunasTabela.map(function(chaveCampo){
+      /* Colunas marcadas em cfg.colunasInlineSelect (Status/Objeto de
+         Processos) viram uma lista suspensa editável direto na linha —
+         event.stopPropagation() no <td> impede que escolher uma opção
+         também dispare o onclick da linha (que abriria o diálogo de
+         edição completo). */
+      if(cfg.colunasInlineSelect && cfg.colunasInlineSelect[chaveCampo]){
+        var valSel = item[chaveCampo] || '';
+        var opcoes = csOpcoesInlineSelect(cfg, chaveCampo, valSel);
+        return '<td onclick="event.stopPropagation()"><select class="cs-inline-select" onchange="csAtualizarCampoInline(\'' + item.id + '\',\'' + chaveCampo + '\',this.value)">'
+          + '<option value=""' + (valSel ? '' : ' selected') + '>—</option>'
+          + opcoes.map(function(o){ return '<option value="' + esc(o) + '"' + (o === valSel ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('')
+          + '</select></td>';
+      }
       var campo = cfg.campos.find(function(c){ return c.chave === chaveCampo; });
       var val = item[chaveCampo];
       var txt;
@@ -2814,6 +3118,7 @@ function abrirFuncionarios(){
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-funcionarios').style.display = 'flex';
@@ -2891,6 +3196,7 @@ function abrirRescisao(){
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-rescisao').style.display = 'flex';
@@ -2907,6 +3213,7 @@ function abrirFerias(){
   $('view-rescisao').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-ferias').style.display = 'flex';
@@ -3515,6 +3822,7 @@ function abrirSolicPag(tipo){
   $('view-cad-simples').style.display = 'none';
   $('view-importacao').style.display = 'none';
   $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'flex';
   $('solicpag-titulo').textContent = 'Solicitação de Pagamento — ' + (tipo==='ferias' ? 'Férias' : 'Rescisão');
@@ -4798,7 +5106,205 @@ function abrirImportacaoProcessos(){
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-importacao').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-processos').style.display = 'flex';
+}
+
+/* ================= ROTINA: IMPORTAR PROCESSOS (Jurídico > Processos Arquivados) =================
+   Mesma mecânica e mesma filosofia da Importar Processos de Processos Ativos
+   (ver comentário lá em cima) — só muda a planilha/colunas de origem e a
+   tabela de destino (jur_processos_arquivados). Cada linha importada vira um
+   INSERT novo, sempre; sem upsert por número de processo. */
+var COLUNA_MAP_PROCESSOS_ARQ = {
+  'filial': 'filial',
+  'cc': 'centroCusto',
+  'centro custo': 'centroCusto',
+  'numero do processo': 'numeroProcesso',
+  'polo ativo': 'poloAtivo',
+  'polo passivo': 'poloPassivo',
+  'data de distribuicao': 'dataDistribuicao',
+  'valor da causa': 'valorCausa',
+  'valor pago': 'valorPago',
+  'data do encerramento': 'dataEncerramento',
+  /* "Objeito" é o cabeçalho real (com erro de digitação) na planilha modelo
+     de arquivados — mapeado do mesmo jeito que "objeto" (sem o erro), caso
+     uma versão futura da planilha já venha corrigida. */
+  'objeito': 'objeto',
+  'objeto': 'objeto',
+  'motivo do encerramento': 'motivoEncerramento',
+  'vara/camara': 'varaCamara',
+  'vara camara': 'varaCamara'
+};
+var CAMPOS_DATA_PROCESSOS_ARQ = ['dataDistribuicao','dataEncerramento'];
+
+function mapRowToProcessoArquivado(rawRow){
+  var obj = {};
+  Object.keys(rawRow).forEach(function(h){
+    var campo = COLUNA_MAP_PROCESSOS_ARQ[normalizeHeader(h)];
+    if(!campo) return;
+    var val = rawRow[h];
+    if(val === undefined || val === null || val === '') return;
+    val = (CAMPOS_DATA_PROCESSOS_ARQ.indexOf(campo) !== -1) ? formatarDataCelula(val) : String(val).trim();
+    obj[campo] = val;
+  });
+  return obj;
+}
+
+function jurProcessoArquivadoParaLinha(p){
+  return {
+    filial: p.filial || null,
+    centro_custo: p.centroCusto || null,
+    numero_processo: p.numeroProcesso || null,
+    polo_ativo: p.poloAtivo || null,
+    polo_passivo: p.poloPassivo || null,
+    data_distribuicao: dataBRParaISO(p.dataDistribuicao),
+    valor_causa: numeroBRParaFloat(p.valorCausa),
+    valor_pago: numeroBRParaFloat(p.valorPago),
+    data_encerramento: dataBRParaISO(p.dataEncerramento),
+    objeto: p.objeto || null,
+    motivo_encerramento: p.motivoEncerramento || null,
+    vara_camara: p.varaCamara || null
+  };
+}
+
+function handleImportFileProcessosArquivados(file){
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    impaMsg('A biblioteca de leitura de planilhas ainda não carregou. Aguarde alguns segundos e tente novamente.', 'err');
+    return;
+  }
+  $('impa-fname').textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', cellDates: true });
+      var sheet = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      processarLinhasImportacaoProcessosArquivados(rows);
+    }catch(err){
+      impaMsg('Não foi possível ler o arquivo. Confira se é uma planilha válida (.xlsx, .xls ou .csv). Detalhe: '+esc(err.message), 'err');
+    }
+  };
+  reader.onerror = function(){ impaMsg('Erro ao ler o arquivo selecionado.', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function impaMsg(texto, tipo){
+  var el = $('impa-msg'); el.className = 'func-msg ' + (tipo||'info'); el.innerHTML = texto;
+}
+function impaMsgClear(){ var el = $('impa-msg'); el.className = 'func-msg'; el.innerHTML = ''; }
+
+function processarLinhasImportacaoProcessosArquivados(rows){
+  impaMsgClear();
+  if(!rows.length){
+    impaMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
+    return;
+  }
+  var mapeados = [];
+  rows.forEach(function(r){
+    var p = mapRowToProcessoArquivado(r);
+    if(!Object.keys(p).length) return;
+    mapeados.push(p);
+  });
+  if(!mapeados.length){
+    impaMsg('Nenhuma coluna foi reconhecida na planilha. Confira se a primeira linha contém os cabeçalhos esperados (Filial, CC, Número do Processo, Polo Ativo, Data de Distribuição, Valor da Causa, Valor Pago, Data do Encerramento, Objeto, Motivo do Encerramento, Vara/Câmara, Polo Passivo).', 'err');
+    $('impa-summary').style.display = 'none';
+    $('impa-confirm-bar').style.display = 'none';
+    $('impa-table').style.display = 'none';
+    return;
+  }
+  var semNumero = mapeados.filter(function(p){ return !p.numeroProcesso || p.numeroProcesso === '0'; }).length;
+
+  state.importProcessosArquivadosPreview = mapeados;
+  $('impa-stat-total').textContent = rows.length;
+  $('impa-stat-semnum').textContent = semNumero;
+  $('impa-summary').style.display = 'flex';
+  $('impa-confirm-bar').style.display = 'flex';
+  renderImportProcessosArquivadosPreviewTable(mapeados);
+  impaMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — cada uma vira um registro próprio em Processos Arquivados. Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+}
+
+function renderImportProcessosArquivadosPreviewTable(lista){
+  $('impa-table').style.display = 'table';
+  $('impa-tbody').innerHTML = lista.map(function(p){
+    return '<tr>'
+      + '<td>'+esc(p.filial)+'</td>'
+      + '<td>'+esc(p.centroCusto)+'</td>'
+      + '<td>'+esc(p.numeroProcesso)+'</td>'
+      + '<td>'+esc(p.poloAtivo)+'</td>'
+      + '<td>'+esc(p.poloPassivo)+'</td>'
+      + '<td>'+esc(p.dataDistribuicao)+'</td>'
+      + '<td>'+esc(fmtValorBR(numeroBRParaFloat(p.valorCausa)))+'</td>'
+      + '<td>'+esc(fmtValorBR(numeroBRParaFloat(p.valorPago)))+'</td>'
+      + '<td>'+esc(p.dataEncerramento)+'</td>'
+      + '<td>'+esc(p.objeto)+'</td>'
+      + '<td>'+esc(p.motivoEncerramento)+'</td>'
+      + '<td>'+esc(p.varaCamara)+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function confirmarImportacaoProcessosArquivados(){
+  if(!state.importProcessosArquivadosPreview.length) return;
+  aplicarImportacaoProcessosArquivados();
+}
+
+async function aplicarImportacaoProcessosArquivados(){
+  if(!state.importProcessosArquivadosPreview.length) return;
+  var linhas = state.importProcessosArquivadosPreview.map(jurProcessoArquivadoParaLinha);
+  var qtd = linhas.length;
+
+  state.importProcessosArquivadosPreview = [];
+  $('impa-summary').style.display = 'none';
+  $('impa-confirm-bar').style.display = 'none';
+  $('impa-table').style.display = 'none';
+  $('impa-fname').textContent = '';
+  $('impa-file-input').value = '';
+  impaMsg(qtd+' processo(s) importado(s) — salvando no Supabase agora… <a onclick="abrirProcessosArquivados()">Ver Processos Arquivados</a>', 'ok');
+  toast(qtd+' processo(s) importado(s). Salvando no Supabase…');
+
+  var falhas = 0;
+  var primeiroErro = null;
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      var resp = await sbClient.from('jur_processos_arquivados').insert(lote);
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao importar processos arquivados (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas){
+    toast(qtd + ' processo(s) salvo(s) no Supabase.');
+  } else {
+    toast(dpFormatarErroSupabase((qtd-falhas)+' processo(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+  }
+}
+
+function cancelarImportacaoProcessosArquivados(){
+  state.importProcessosArquivadosPreview = [];
+  $('impa-summary').style.display = 'none';
+  $('impa-confirm-bar').style.display = 'none';
+  $('impa-table').style.display = 'none';
+  $('impa-fname').textContent = '';
+  $('impa-file-input').value = '';
+  impaMsgClear();
+}
+
+function abrirImportacaoProcessosArquivados(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'flex';
 }
 
 /* Liga o drag-and-drop de uma zona de importação genérica (usado tanto pela
@@ -4817,6 +5323,7 @@ function initImportDropzoneGenerico(dzId, handler){
 }
 function initImportDropzone(){ initImportDropzoneGenerico('imp-dropzone', handleImportFile); }
 function initImportDropzoneProcessos(){ initImportDropzoneGenerico('impp-dropzone', handleImportFileProcessos); }
+function initImportDropzoneProcessosArquivados(){ initImportDropzoneGenerico('impa-dropzone', handleImportFileProcessosArquivados); }
 
 /* ================= DASHBOARDS ================= */
 /* Método: forma pela função do dado -> cor computada (paleta validada do
@@ -5035,17 +5542,17 @@ function vizKpiRow(tiles){
 
 /* ---- navegação das abas ---- */
 function abrirDashboardQuadro(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('quadro');
 }
 function abrirDashboardIndicadores(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('indicadores');
 }
 function abrirDashboardProvisoes(){
-  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none';
   $('view-dashboard').style.display='flex';
   mudarAbaDashboard('provisoes');
 }
@@ -5434,6 +5941,7 @@ function sideSearch(){
 initAmbienteScreen();
 initImportDropzone();
 initImportDropzoneProcessos();
+initImportDropzoneProcessosArquivados();
 /* dpCarregarDadosIniciais() só é chamada depois de um login bem-sucedido
    (ver loginEntrarComoUsuario) — antes, ela rodava aqui direto no carregamento
    da página, o que buscava CPF/RG/salário de todos os colaboradores pro
