@@ -352,6 +352,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .func-msg.info{display:block;background:#eef5fb;border:1px solid #cfe0ee;color:#2c5a80;}
   .func-msg.err{display:block;background:#fdecea;border:1px solid #f5c6c3;color:#a94442;}
   .func-msg.ok{display:block;background:#eaf7ec;border:1px solid #c9e9cd;color:#2e7d32;}
+  .func-msg.warn{display:block;background:#fdf3e3;border:1px solid #f0dba8;color:#8a5a00;}
   .filtro-bar{
     display:flex;align-items:center;gap:9px;flex-wrap:wrap;
     padding:10px 14px;border-bottom:1px solid #e3e3e3;background:#f7f9fb;
@@ -391,6 +392,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .badge{display:inline-block;padding:2px 9px;border-radius:2px;font-size:10.5px;font-weight:700;color:#fff;}
   .badge.ativo{background:#2e9e44;}
   .badge.desligado{background:#9e9e9e;}
+  .badge.removido{background:#c07a1e;}
+  .badge-acao{margin-left:7px;font-size:10.5px;}
 
   .chk-badge-btn{white-space:nowrap;}
   .chk-badge-btn.ok{background:linear-gradient(#e5f6e8,#d3efd8);border-color:#a9d8b3;color:#2e7d32;font-weight:600;}
@@ -944,6 +947,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
           <select id="func-filtro-cc" class="filtro-select" onchange="renderColaboradoresTable()">
             <option value="">Centro de Custo: Todos</option>
           </select>
+          <label class="solic-pago-toggle-form" style="padding-top:0;">
+            <input type="checkbox" id="func-filtro-mostrar-removidos" onchange="renderColaboradoresTable()"> Mostrar removidos
+          </label>
           <button class="btn" onclick="limparFiltroFunc()">Limpar filtros</button>
           <div class="filtro-count" id="func-filtro-count"></div>
         </div>
@@ -1196,6 +1202,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
           <div class="imp-stat"><div class="num" id="imp-stat-novos">0</div><div class="lbl">Novos cadastros</div></div>
           <div class="imp-stat"><div class="num" id="imp-stat-atualizados">0</div><div class="lbl">Já existentes (serão atualizados)</div></div>
           <div class="imp-stat warn"><div class="num" id="imp-stat-semmat">0</div><div class="lbl">Sem matrícula (ignoradas)</div></div>
+          <div class="imp-stat warn"><div class="num" id="imp-stat-remover">0</div><div class="lbl">Fora da planilha (a remover)</div></div>
         </div>
         <div class="routine-bar" id="imp-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
           <div class="flex"></div>
@@ -1364,6 +1371,31 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
         <button class="btn" onclick="closeDlg('dlg-cad-simples')">Cancelar</button>
         <button class="btn primary" onclick="salvarCadSimples()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== IMPORTAÇÃO: CONFIRMAR REMOÇÃO (separado) ==================== -->
+<div class="overlay" id="dlg-import-remocao">
+  <div class="dlg" style="width:640px;">
+    <div class="dlg-title"><span class="flex">Confirmar remoção de colaboradores</span><span class="x" onclick="closeDlg('dlg-import-remocao')">&#10005;</span></div>
+    <div class="dlg-body">
+      <div class="func-msg warn" style="display:block;">
+        <b id="imp-remocao-qtd">0</b> colaborador(es) abaixo estão cadastrados no sistema, mas não aparecem
+        nesta planilha de Ativos. Ao confirmar, eles são marcados como <b>Removidos</b> — saem das listagens
+        padrão de Funcionários e Rescisão, mas nada é apagado: CPF, histórico e qualquer rescisão/pagamento já
+        lançado continuam salvos, e dá pra reativar depois (tela de Funcionários, marque "Mostrar removidos").
+      </div>
+      <div style="max-height:340px;overflow-y:auto;margin-top:10px;">
+        <table class="func" style="width:100%;">
+          <thead><tr><th>Matrícula</th><th>Nome</th><th>Centro de Custo</th></tr></thead>
+          <tbody id="imp-remocao-tbody"></tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="btn" onclick="closeDlg('dlg-import-remocao')">Cancelar</button>
+        <button class="btn primary" onclick="confirmarImportacaoComRemocao()">Confirmar Importação e Remoção</button>
       </div>
     </div>
   </div>
@@ -1606,6 +1638,7 @@ var state = {
   usuarioLogado: null,  // { id, usuario, nome, email } do usuário autenticado na tela de Login
   colaboradores: [],   // cadastro unificado (carregado do Supabase ao abrir a página)
   importPreview: [],   // linhas lidas da planilha, aguardando confirmação
+  importRemocoes: [],  // colaboradores cadastrados que sumiram da planilha, aguardando confirmação separada
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -1651,7 +1684,8 @@ function dpLinhaParaColaborador(r){
     valorMqp: (r.valor_mqp === null || r.valor_mqp === undefined) ? '' : r.valor_mqp,
     valorMultaFgts: (r.valor_multa_fgts === null || r.valor_multa_fgts === undefined) ? '' : r.valor_multa_fgts,
     feriasPagar: !!r.ferias_pagar, dataPagamentoFerias: r.data_pagamento_ferias || '',
-    valorFerias: (r.valor_ferias === null || r.valor_ferias === undefined) ? '' : r.valor_ferias
+    valorFerias: (r.valor_ferias === null || r.valor_ferias === undefined) ? '' : r.valor_ferias,
+    removidoImportacao: !!r.removido_importacao
   };
 }
 
@@ -1718,7 +1752,8 @@ function dpColaboradorParaLinha(p){
     valor_mqp: numeroBRParaFloat(p.valorMqp),
     valor_multa_fgts: numeroBRParaFloat(p.valorMultaFgts),
     ferias_pagar: !!p.feriasPagar, data_pagamento_ferias: dataBRParaISO(p.dataPagamentoFerias),
-    valor_ferias: numeroBRParaFloat(p.valorFerias)
+    valor_ferias: numeroBRParaFloat(p.valorFerias),
+    removido_importacao: !!p.removidoImportacao
   };
 }
 
@@ -2703,10 +2738,16 @@ function abrirFuncionarios(){
    opcionais — quando não informados (undefined), o filtro correspondente fica
    inativo. Usados hoje só na tela de Movimentações > Rescisão; a de Funcionários
    continua chamando só com (lista, busca, cc) e não é afetada. */
-function filtrarColaboradores(lista, busca, cc, mqpFiltro, dataDe, dataAte){
+function filtrarColaboradores(lista, busca, cc, mqpFiltro, dataDe, dataAte, incluirRemovidos){
   busca = (busca||'').trim().toLowerCase();
   cc = cc||'';
   return lista.map(function(p, idx){ return {p:p, idx:idx}; }).filter(function(o){
+    /* Colaboradores marcados como removidos pela Importação de Ativo ficam
+       de fora por padrão de qualquer listagem operacional (Funcionários,
+       Rescisão) — só aparecem se quem estiver olhando marcar explicitamente
+       "Mostrar removidos" (hoje só existe esse toggle na tela de
+       Funcionários; Rescisão nunca passa incluirRemovidos=true). */
+    if(!incluirRemovidos && o.p.removidoImportacao) return false;
     var okBusca = !busca
       || String(o.p.nome||'').toLowerCase().indexOf(busca) >= 0
       || String(o.p.matricula||'').toLowerCase().indexOf(busca) >= 0;
@@ -3177,6 +3218,7 @@ function filtrarColaboradoresFerias(lista, busca, cc, feriasFiltro, dataDe, data
   busca = (busca||'').trim().toLowerCase();
   cc = cc||'';
   return lista.map(function(p, idx){ return {p:p, idx:idx}; }).filter(function(o){
+    if(o.p.removidoImportacao) return false; // ver comentário em filtrarColaboradores()
     var okBusca = !busca
       || String(o.p.nome||'').toLowerCase().indexOf(busca) >= 0
       || String(o.p.matricula||'').toLowerCase().indexOf(busca) >= 0;
@@ -4022,7 +4064,13 @@ function funcMsgClear(){
 }
 
 function situacaoColaborador(p){
-  return p.dataDemissao ? { texto: 'Desligado', cls: 'desligado' } : { texto: 'Ativo', cls: 'ativo' };
+  /* Prioridade: uma demissão formal (com data, lançada pela rotina de
+     Rescisão) sempre fala mais alto que a reconciliação da Importação de
+     Ativo — "Removido" é só um jeito de dizer "sumiu da planilha, sem uma
+     data de desligamento oficial associada". */
+  if(p.dataDemissao) return { texto: 'Desligado', cls: 'desligado' };
+  if(p.removidoImportacao) return { texto: 'Removido', cls: 'removido' };
+  return { texto: 'Ativo', cls: 'ativo' };
 }
 function campoFuncao(p){ return p.funcao || p.cargo || ''; }
 function campoTelefone(p){
@@ -4056,7 +4104,8 @@ function renderColaboradoresTable(){
   popularFiltroCC('func-filtro-cc', lista);
   var busca = $('func-filtro-busca').value;
   var cc = $('func-filtro-cc').value;
-  var pares = filtrarColaboradores(lista, busca, cc);
+  var incluirRemovidos = $('func-filtro-mostrar-removidos').checked;
+  var pares = filtrarColaboradores(lista, busca, cc, undefined, undefined, undefined, incluirRemovidos);
   $('func-filtro-count').textContent = pares.length + ' de ' + lista.length + ' colaborador(es)';
   if(!pares.length){
     $('func-empty').style.display = 'block';
@@ -4069,6 +4118,10 @@ function renderColaboradoresTable(){
   $('func-tbody').innerHTML = pares.map(function(o){
     var p = o.p, idx = o.idx;
     var sit = situacaoColaborador(p);
+    var badgeHtml = '<span class="badge '+sit.cls+'">'+sit.texto+'</span>';
+    if(sit.cls === 'removido'){
+      badgeHtml += '<a class="badge-acao" onclick="event.stopPropagation();reativarColaborador(\''+esc(p.matricula)+'\')" title="Volta a aparecer nas listagens padrão">Reativar</a>';
+    }
     return '<tr onclick="verDetalheColab('+idx+')">'
       + '<td>'+esc(p.matricula)+'</td>'
       + '<td>'+esc(p.nome)+'</td>'
@@ -4079,10 +4132,30 @@ function renderColaboradoresTable(){
       + '<td>'+esc(p.dataAdmissao)+'</td>'
       + '<td>'+esc(p.dataDemissao)+'</td>'
       + '<td>'+esc(p.situacaoFolha)+'</td>'
-      + '<td><span class="badge '+sit.cls+'">'+sit.texto+'</span></td>'
+      + '<td>'+badgeHtml+'</td>'
       + '<td>'+esc(campoTelefone(p))+'</td>'
       + '</tr>';
   }).join('');
+}
+
+/* Desfaz a marcação de "removido" (ver Importação de Ativo) — o colaborador
+   volta a aparecer nas listagens padrão de Funcionários e Rescisão. Nada
+   nunca foi apagado, então não há dado pra "recuperar": só liga a flag de
+   volta pra false, local e no Supabase. */
+async function reativarColaborador(matricula){
+  var p = state.colaboradores.find(function(c){ return c.matricula === matricula; });
+  if(!p) return;
+  if(!confirm('Reativar ' + (p.nome || matricula) + '? Volta a aparecer nas listagens padrão de Funcionários e Rescisão.')) return;
+  p.removidoImportacao = false;
+  renderColaboradoresTable();
+  try{
+    var resp = await sbClient.from('dp_colaboradores').update({ removido_importacao: false }).eq('matricula', matricula);
+    if(resp.error) throw resp.error;
+    toast('Colaborador reativado.');
+  } catch(erro){
+    toast(dpFormatarErroSupabase('Não foi possível reativar no Supabase', erro), true, 9000);
+    console.error('Falha ao reativar colaborador:', erro);
+  }
 }
 
 function valOr(v){
@@ -4272,6 +4345,11 @@ function processarLinhasImportacao(rows){
   rows.forEach(function(r){
     var c = mapRowToColaborador(r);
     if(!c.matricula){ semMatricula++; return; }
+    /* Quem está NESTA planilha volta a ficar "não removido" mesmo que tivesse
+       sido marcado como removido numa importação anterior — ver
+       aplicarImportacao()/dpUpsertColaboradoresImportados(), que gravam esse
+       "false" tanto localmente quanto no Supabase. */
+    c.removidoImportacao = false;
     mapeados.push(c);
   });
   if(!mapeados.length){
@@ -4282,20 +4360,37 @@ function processarLinhasImportacao(rows){
     return;
   }
 
+  var matriculasImportadas = {};
+  mapeados.forEach(function(c){ matriculasImportadas[c.matricula] = true; });
+
   var existentes = {};
   state.colaboradores.forEach(function(c){ if(c.matricula) existentes[c.matricula] = true; });
   var novos = mapeados.filter(function(c){ return !existentes[c.matricula]; }).length;
   var atualizados = mapeados.length - novos;
 
+  /* Reconciliação: quem já está cadastrado, não veio nesta planilha, e ainda
+     não estava marcado como removido de uma importação anterior — vira
+     candidato a "removido" (ver pergunta/resposta do usuário: mantém o
+     cadastro e o histórico, só marca como inativo — nunca apaga). Precisa de
+     confirmação separada antes de aplicar (ver confirmarImportacao). */
+  var aRemover = state.colaboradores.filter(function(c){
+    return c.matricula && !matriculasImportadas[c.matricula] && !c.removidoImportacao;
+  });
+
   state.importPreview = mapeados;
+  state.importRemocoes = aRemover;
   $('imp-stat-total').textContent = rows.length;
   $('imp-stat-novos').textContent = novos;
   $('imp-stat-atualizados').textContent = atualizados;
   $('imp-stat-semmat').textContent = semMatricula;
+  $('imp-stat-remover').textContent = aRemover.length;
   $('imp-summary').style.display = 'flex';
   $('imp-confirm-bar').style.display = 'flex';
   renderImportPreviewTable(mapeados);
-  impMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar. Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+  var avisoRemocao = aRemover.length
+    ? (' ' + aRemover.length + ' colaborador(es) cadastrado(s) não aparecem nesta planilha — a tela vai pedir uma confirmação separada pra marcá-los como removidos.')
+    : '';
+  impMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar.' + avisoRemocao + ' Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
 }
 
 function renderImportPreviewTable(lista){
@@ -4315,24 +4410,100 @@ function renderImportPreviewTable(lista){
   }).join('');
 }
 
+/* Clicar em "Confirmar Importação": se não há ninguém pra remover, aplica
+   tudo na hora (igual ao comportamento de sempre). Se há, pede uma
+   confirmação SEPARADA numa tela própria — mostrando nome e matrícula de
+   cada um — antes de marcar qualquer coisa como removida. */
 function confirmarImportacao(){
   if(!state.importPreview.length) return;
+  if((state.importRemocoes||[]).length){
+    renderImportRemocaoPreview();
+    openDlg('dlg-import-remocao');
+    return;
+  }
+  aplicarImportacao();
+}
+
+function renderImportRemocaoPreview(){
+  var lista = state.importRemocoes || [];
+  $('imp-remocao-qtd').textContent = lista.length;
+  $('imp-remocao-tbody').innerHTML = lista.map(function(p){
+    return '<tr>'
+      + '<td>'+esc(p.matricula)+'</td>'
+      + '<td>'+esc(p.nome)+'</td>'
+      + '<td>'+esc(p.centroCusto)+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+/* Confirmação separada (dlg-import-remocao): só chega aqui depois de ver a
+   lista de quem seria removido e clicar em "Confirmar Importação e Remoção". */
+function confirmarImportacaoComRemocao(){
+  closeDlg('dlg-import-remocao');
+  aplicarImportacao();
+}
+
+function aplicarImportacao(){
+  if(!state.importPreview.length) return;
   var importados = state.importPreview.filter(function(c){ return !!c.matricula; });
+  var remocoes = state.importRemocoes || [];
+  var matriculasRemover = remocoes.map(function(c){ return c.matricula; });
+
   state.colaboradores = mesclarColaboradores(state.colaboradores, state.importPreview);
+  if(matriculasRemover.length){
+    var setRemover = {};
+    matriculasRemover.forEach(function(m){ setRemover[m] = true; });
+    state.colaboradores.forEach(function(c){
+      if(setRemover[c.matricula]) c.removidoImportacao = true;
+    });
+  }
+
   var qtd = state.importPreview.length;
+  var qtdRemovidos = matriculasRemover.length;
   state.importPreview = [];
+  state.importRemocoes = [];
+
   dpUpsertColaboradoresImportados(importados);
+  if(qtdRemovidos) dpMarcarRemovidosImportacao(matriculasRemover);
+
   $('imp-summary').style.display = 'none';
   $('imp-confirm-bar').style.display = 'none';
   $('imp-table').style.display = 'none';
   $('imp-fname').textContent = '';
   $('imp-file-input').value = '';
-  impMsg(qtd+' colaborador(es) importado(s) para a tela — salvando no Supabase agora… <a onclick="abrirFuncionarios()">Ver Cadastro de Funcionários</a>', 'ok');
-  toast(qtd+' colaborador(es) importado(s). Salvando no Supabase…');
+  var sufixoRemocao = qtdRemovidos ? (' e '+qtdRemovidos+' marcado(s) como removido(s)') : '';
+  impMsg(qtd+' colaborador(es) importado(s)'+sufixoRemocao+' — salvando no Supabase agora… <a onclick="abrirFuncionarios()">Ver Cadastro de Funcionários</a>', 'ok');
+  toast(qtd+' colaborador(es) importado(s)'+sufixoRemocao+'. Salvando no Supabase…');
+}
+
+/* Marca no Supabase (em lotes, mesmo motivo do DP_IMPORT_LOTE) os
+   colaboradores que saíram da planilha de Ativos — sem apagar nada, só
+   liga a flag "removido_importacao" (ver comentário na tabela). */
+async function dpMarcarRemovidosImportacao(matriculas){
+  if(!matriculas.length) return;
+  var falhas = [];
+  var primeiroErro = null;
+  for(var i = 0; i < matriculas.length; i += DP_IMPORT_LOTE){
+    var lote = matriculas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      var resp = await sbClient.from('dp_colaboradores').update({ removido_importacao: true }).in('matricula', lote);
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao marcar removidos (matrículas ' + lote.join(', ') + ')', erro));
+      falhas = falhas.concat(lote);
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas.length){
+    toast((matriculas.length) + ' colaborador(es) marcado(s) como removido(s) no Supabase.');
+  } else {
+    toast(dpFormatarErroSupabase((matriculas.length-falhas.length)+' removido(s) salvo(s), mas '+falhas.length+' falharam', primeiroErro), true, 12000);
+  }
 }
 
 function cancelarImportacao(){
   state.importPreview = [];
+  state.importRemocoes = [];
   $('imp-summary').style.display = 'none';
   $('imp-confirm-bar').style.display = 'none';
   $('imp-table').style.display = 'none';
