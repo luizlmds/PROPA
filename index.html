@@ -607,6 +607,13 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   }
   .cs-inline-select:hover{border-color:#ccc;background:#f7f9fb;}
   .cs-inline-select:focus{outline:none;border-color:var(--azul);background:#fff;}
+  /* Colunas de status com fundo colorido (ver cfg.colunasStatusColorido/
+     corStatusBadge) — cor de fundo/texto vem inline (calculada por valor),
+     essa classe só cuida da forma (pílula arredondada, negrito). */
+  .cs-inline-select-badge{
+    border-radius:12px;font-weight:600;padding:4px 10px;border-width:1px;
+  }
+  .cs-inline-select-badge:focus{background:inherit;}
   /* Campo tipo "ambientes-checkbox" (Usuários > Ambientes com Acesso). */
   .cs-ambientes-chk{display:flex;flex-wrap:wrap;gap:8px 18px;padding:8px 0;}
   .cs-ambientes-chk label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#444;cursor:pointer;}
@@ -2784,6 +2791,10 @@ var CADASTROS_SIMPLES = {
       status: ['ATIVO','PROCEDENTE EMPRESA','IMPROCEDENTE EMPRESA','PARCIALMENTE PROCEDENTE','ACORDO','ARQUIVADO'],
       objeto: []
     },
+    /* Fundo colorido pro valor selecionado nessas colunas (ver
+       corStatusBadge) — só nas que representam de fato um status/resultado;
+       "Objeto" fica de fora, é só o assunto do processo. */
+    colunasStatusColorido: ['status'],
     /* Filtros por coluna, mostrados numa barra própria acima da tabela (além
        da busca livre por Nº do Processo/Polo Ativo). "select" lista os
        valores distintos já cadastrados; "daterange"/"numrange" são faixas
@@ -2828,6 +2839,7 @@ var CADASTROS_SIMPLES = {
       motivo_encerramento: ['Acordo','Julgado procedente','Julgado Improcedente','Processo Extinto','Decisão judicial com resolução de mérito','Decisão judicial sem resolução de mérito'],
       objeto: []
     },
+    colunasStatusColorido: ['motivo_encerramento'],
     filtrosColuna: [
       { chave:'filial', label:'Filial', tipo:'select' },
       { chave:'centro_custo', label:'CC', tipo:'select' },
@@ -2946,7 +2958,8 @@ var CADASTROS_SIMPLES = {
        status digitado na mão ou vindo de importação futura não fica de fora. */
     colunasInlineSelect: {
       status: ['PROCESSO PENDENTE','PROCESSO CONCLUÍDO','EM ANÁLISE','CANCELADO']
-    }
+    },
+    colunasStatusColorido: ['status']
   },
   jur_pagamentos: {
     ambiente: 'Jurídico',
@@ -2979,6 +2992,10 @@ var CADASTROS_SIMPLES = {
       status: ['Financeiro','Integração','Pagamento','Recebimento'],
       pagamento: ['Pendente','Realizado']
     },
+    /* Só "Pagamento" (Pendente/Realizado) é um status de resultado de
+       verdade — "Status" aqui na planilha é mais um tipo de lançamento
+       (Financeiro/Integração/...) do que um veredito, então fica sem cor. */
+    colunasStatusColorido: ['pagamento'],
     filtrosColuna: [
       { chave:'status', label:'Status', tipo:'select' },
       { chave:'categoria', label:'Categoria', tipo:'select' },
@@ -3149,6 +3166,30 @@ function csFiltroRangeChange(chave, limite, valor){
    um status/objeto que só existe por causa de uma planilha importada nunca
    fica de fora da lista, e o <select> nunca abre "em branco" perdendo o
    valor salvo. */
+/* Cor de fundo pro valor de um status (ver cfg.colunasStatusColorido) —
+   reconhece o valor por palavra-chave (maiúsculas, sem acento), não por
+   lista fixa, porque cada rotina do Jurídico usa um vocabulário diferente
+   pra "status" (Processos: ATIVO/PROCEDENTE/…; Processos Arquivados:
+   Julgado procedente/…; Medidas Disciplinares: PROCESSO PENDENTE/…;
+   Pagamentos: Pendente/Realizado) e a planilha real ainda traz grafias
+   inconsistentes (PEDENTE, CONLCUIDO). Ordem importa: regras mais
+   específicas primeiro (ex.: "IMPROCEDENTE" precisa ser barrada antes de
+   cair na regra genérica de "PROCEDENTE", senão pegaria verde por engano).
+   Cores reaproveitadas da mesma paleta já usada nos KPIs de Dashboards
+   (--v-good/--v-warning/--v-critical, ver .viz-root). Sem correspondência
+   (ou célula vazia/"—") cai num cinza neutro — nunca fica sem nenhuma cor,
+   mas também não força vermelho/verde num valor que não é claramente um
+   resultado bom ou ruim (ex.: "Financeiro", "Arquivado"). */
+function corStatusBadge(valor){
+  var t = String(valor || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if(!t) return null;
+  if(/IMPROCEDENTE|INDEFERID|REJEITAD|NEGAD|CANCELAD/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };
+  if(/PENDENTE|PEDENTE|ATRASAD|AGUARDANDO/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };
+  if(/PARCIAL|ANALISE|REVISAO/.test(t)) return { bg:'#fdf3e0', fg:'#c07a00' };
+  if(/PROCEDENTE|CONCLUID|CONLCUID|REALIZAD|APROVAD|ACORDO|\bPAGO\b|QUITAD/.test(t)) return { bg:'#e7f6e2', fg:'#0d8a2e' };
+  return { bg:'#eceef0', fg:'#5a6570' };
+}
+
 function csOpcoesInlineSelect(cfg, chave, valorAtual){
   var vistos = {};
   var lista = [];
@@ -3169,6 +3210,18 @@ async function csAtualizarCampoInline(id, chave, valorNovo){
   if(!item) return;
   var valorAnterior = item[chave];
   item[chave] = valorNovo;
+  /* Se essa coluna tem fundo colorido (ver colunasStatusColorido), reaplica a
+     cor no próprio <select> na hora — sem isso o valor mudaria mas a cor de
+     fundo ficaria "atrasada" até a tabela inteira recarregar de novo. */
+  if(cfg.colunasStatusColorido && cfg.colunasStatusColorido.indexOf(chave) >= 0){
+    var elSel = $('cs-inline-' + id + '-' + chave);
+    if(elSel){
+      var cor = corStatusBadge(valorNovo);
+      elSel.style.background = cor ? cor.bg : '';
+      elSel.style.color = cor ? cor.fg : '';
+      elSel.style.borderColor = cor ? cor.bg : '';
+    }
+  }
   try{
     var payload = {}; payload[chave] = valorNovo || null;
     var resp = await sbClient.from(cfg.tabela).update(payload).eq('id', id);
@@ -3265,7 +3318,20 @@ function renderCadSimplesTabela(){
       if(cfg.colunasInlineSelect && cfg.colunasInlineSelect[chaveCampo]){
         var valSel = item[chaveCampo] || '';
         var opcoes = csOpcoesInlineSelect(cfg, chaveCampo, valSel);
-        return '<td onclick="event.stopPropagation()"><select class="cs-inline-select" onchange="csAtualizarCampoInline(\'' + item.id + '\',\'' + chaveCampo + '\',this.value)">'
+        /* colunasStatusColorido (ver corStatusBadge): fundo colorido conforme
+           o valor selecionado, só nas colunas que representam de fato um
+           status/resultado (Objeto, por exemplo, fica de fora). O id no
+           <select> deixa csAtualizarCampoInline reaplicar a cor na hora, sem
+           precisar re-renderizar a linha inteira. */
+        var ehColorido = cfg.colunasStatusColorido && cfg.colunasStatusColorido.indexOf(chaveCampo) >= 0;
+        var idSel = 'cs-inline-' + item.id + '-' + chaveCampo;
+        var estiloCor = '';
+        if(ehColorido){
+          var cor = corStatusBadge(valSel);
+          if(cor){ estiloCor = ' style="background:' + cor.bg + ';color:' + cor.fg + ';border-color:' + cor.bg + ';"'; }
+        }
+        var classeSel = 'cs-inline-select' + (ehColorido ? ' cs-inline-select-badge' : '');
+        return '<td onclick="event.stopPropagation()"><select id="' + idSel + '" class="' + classeSel + '"' + estiloCor + ' onchange="csAtualizarCampoInline(\'' + item.id + '\',\'' + chaveCampo + '\',this.value)">'
           + '<option value=""' + (valSel ? '' : ' selected') + '>—</option>'
           + opcoes.map(function(o){ return '<option value="' + esc(o) + '"' + (o === valSel ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('')
           + '</select></td>';
