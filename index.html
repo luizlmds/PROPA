@@ -2825,7 +2825,15 @@ var CADASTROS_SIMPLES = {
       { chave:'status', label:'Status', tipo:'text' },
       { chave:'data_alimentacao', label:'Data da Alimentação', tipo:'date' }
     ],
-    colunasTabela: ['nome','funcao','data','situacao','alimentado_protheus','centro_custo','motivo','solicitante','gestor_cc','status','data_alimentacao']
+    colunasTabela: ['nome','funcao','data','situacao','alimentado_protheus','centro_custo','motivo','solicitante','gestor_cc','status','data_alimentacao'],
+    /* Status ganha lista suspensa editável direto na linha da tabela (sem
+       precisar abrir o diálogo de edição) — mesma mecânica já usada em
+       Status/Objeto de Processos. Base de opções "conhecidas" + valores
+       distintos já existentes nos dados (ver csOpcoesInlineSelect), então um
+       status digitado na mão ou vindo de importação futura não fica de fora. */
+    colunasInlineSelect: {
+      status: ['PROCESSO PENDENTE','PROCESSO CONCLUÍDO','EM ANÁLISE','CANCELADO']
+    }
   }
 };
 
