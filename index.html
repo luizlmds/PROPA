@@ -583,13 +583,24 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .cs-senha-reset{margin-left:8px;font-size:11.5px;}
   /* Campo tipo "lookup-colaborador" (ex.: Medidas Disciplinares > Colaborador):
      input de texto normal + botão de lupa ao lado, que abre dlg-lookup-colaborador. */
-  .cs-lookup-wrap{display:flex;gap:6px;}
+  .cs-lookup-wrap{display:flex;gap:6px;position:relative;}
   .cs-lookup-wrap .cs-input{flex:1;}
   .cs-lookup-btn{
     flex-shrink:0;width:34px;border:1px solid #d0d0d0;border-radius:2px;background:#fff;
     cursor:pointer;font-size:14px;color:#555;
   }
   .cs-lookup-btn:hover{background:#eef5fb;border-color:var(--azul);}
+  /* Autocomplete list */
+  .cs-autocomplete-list{
+    position:absolute;top:100%;left:0;right:0;margin-top:2px;
+    background:#fff;border:1px solid #d0d0d0;border-radius:4px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);z-index:1000;max-height:200px;overflow-y:auto;
+  }
+  .cs-ac-item{
+    padding:8px 12px;border-bottom:1px solid #eee;cursor:pointer;
+    font-size:13px;color:#333;
+  }
+  .cs-ac-item:hover{background:#eef5fb;color:var(--azul);}
   /* Linhas clicáveis da lista de colaboradores dentro de dlg-lookup-colaborador. */
   .lookup-colab-item{
     display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #eee;
@@ -2062,6 +2073,11 @@ var AMBIENTES = [
     },
     secoes: [
       {
+        titulo: 'Configuração',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Cadastro de Atendentes']
+      },
+      {
         titulo: 'Atendimentos',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Cadastro de Atendimento','Atendimentos Agendados']
@@ -2736,6 +2752,7 @@ var ROTINAS_PRONTAS = {
   'Controle de Afastados::Controle de Afastados': 'abrirAfastados',
   'Controle de Afastados::Importar Afastados': 'abrirImportacaoAfastados',
   'Relatórios e Dashboards::Dashboards Afastados': 'abrirDashboardAfastados',
+  'Configuração::Cadastro de Atendentes': 'abrirCadastroAtendentes',
   'Atendimentos::Cadastro de Atendimento': 'abrirCadastroAtendimento',
   'Atendimentos::Atendimentos Agendados': 'abrirDashboardAtendimentos'
 };
@@ -2804,6 +2821,12 @@ function voltarHome(){
   $('view-importacao-afastados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
+
+  // Mostrar abas de dashboard novamente
+  if($('viz-tab-quadro')) $('viz-tab-quadro').style.display='block';
+  if($('viz-tab-indicadores')) $('viz-tab-indicadores').style.display='block';
+  if($('viz-tab-provisoes')) $('viz-tab-provisoes').style.display='block';
+
   $('view-home').style.display = 'block';
   abaMarcarHome();
 }
@@ -3244,20 +3267,43 @@ var CADASTROS_SIMPLES = {
       { chave:'data_cessacao', label:'Data Cessação', tipo:'daterange' }
     ]
   },
+  rec_atendentes: {
+    ambiente: 'Recepção',
+    secao: 'Atendimentos',
+    titulo: 'Cadastro de Atendentes',
+    tabela: 'rec_atendentes',
+    instrucao: 'Cadastre os atendentes da recepção. Esses nomes aparecerão como opções ao agendar atendimentos. Clique numa linha para editar.',
+    campoBusca: ['nome'],
+    campos: [
+      { chave:'nome', label:'Nome do Atendente', tipo:'text', obrigatorio:true },
+      { chave:'departamento', label:'Departamento', tipo:'text' },
+      { chave:'ramal', label:'Ramal', tipo:'text' },
+      { chave:'email', label:'Email', tipo:'text' },
+      { chave:'telefone', label:'Telefone', tipo:'text' },
+      { chave:'ativo', label:'Ativo', tipo:'checkbox' }
+    ],
+    colunasTabela: ['nome','departamento','ramal','email','telefone','ativo'],
+    colunasInlineSelect: {},
+    colunasStatusColorido: [],
+    filtrosColuna: [
+      { chave:'ativo', label:'Ativo', tipo:'select' },
+      { chave:'departamento', label:'Departamento', tipo:'select' }
+    ]
+  },
   rec_atendimentos: {
     ambiente: 'Recepção',
     secao: 'Atendimentos',
     titulo: 'Cadastro de Atendimento',
     tabela: 'rec_atendimentos',
-    instrucao: 'Cadastre agendamentos de atendimentos com colaboradores. Preencha os dados do colaborador, quem irá atender e o horário de comparecimento. Clique numa linha para editar.',
+    instrucao: 'Cadastre agendamentos de atendimentos com colaboradores. Busque o colaborador pelo nome, preencha os dados e selecione o atendente e horário. Clique numa linha para editar.',
     campoBusca: ['nome_colaborador','matricula'],
     campos: [
-      { chave:'nome_colaborador', label:'Nome do Colaborador', tipo:'text', obrigatorio:true },
-      { chave:'matricula', label:'Matrícula', tipo:'text', obrigatorio:true },
-      { chave:'funcao', label:'Função', tipo:'text' },
-      { chave:'quem_atenderá', label:'Quem Atenderá?', tipo:'text', obrigatorio:true },
+      { chave:'nome_colaborador', label:'Nome do Colaborador', tipo:'autocomplete', obrigatorio:true, fonte:'dp_colaboradores', campoFonte:'nome', filtroFonte:{situacao_folha:'Ativo'}, preencheAoSelecionar:{matricula:'matricula', funcao:'funcao'} },
+      { chave:'matricula', label:'Matrícula', tipo:'text', obrigatorio:true, readonly:true },
+      { chave:'funcao', label:'Função', tipo:'text', readonly:true },
+      { chave:'quem_atenderá', label:'Quem Atenderá?', tipo:'select', obrigatorio:true, fonte:'rec_atendentes', campoFonte:'nome', filtroFonte:{ativo:true} },
       { chave:'data_agendamento', label:'Data do Agendamento', tipo:'date', obrigatorio:true },
-      { chave:'horario_comparecimento', label:'Horário que Comparecerá', tipo:'time', obrigatorio:true },
+      { chave:'horario_comparecimento', label:'Horário que Comparecerá', tipo:'select', obrigatorio:true, opcoes:['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'] },
       { chave:'status', label:'Status', tipo:'text' },
       { chave:'observacoes', label:'Observações', tipo:'textarea', largura:'full' }
     ],
@@ -3282,6 +3328,7 @@ function abrirPericias(){ abrirCadSimples('jur_pericias'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirAfastados(){ abrirCadSimples('med_afastados'); }
+function abrirCadastroAtendentes(){ abrirCadSimples('rec_atendentes'); }
 function abrirCadastroAtendimento(){ abrirCadSimples('rec_atendimentos'); }
 function abrirUsuarios(){
   /* Defesa extra: o item "Usuários" já nem aparece no menu/Início pra quem
@@ -3762,8 +3809,21 @@ function csCampoHtml(c, item){
           return '<label><input type="checkbox" value="' + esc(a.codigo) + '"' + checked + '> ' + esc(a.codigo) + ' - ' + esc(a.nome) + '</label>';
         }).join('')
       + '</div>';
+  } else if(c.tipo === 'checkbox'){
+    inputHtml = '<input type="checkbox" id="cs-f-' + c.chave + '" class="cs-input"' + (val ? ' checked' : '') + '>';
+  } else if(c.tipo === 'autocomplete'){
+    /* Campo com autocomplete que busca de outra tabela (ex: nome_colaborador buscando em dp_colaboradores) */
+    inputHtml = '<div class="cs-lookup-wrap">'
+      + '<input type="text" id="cs-f-' + c.chave + '" class="cs-input cs-autocomplete" data-chave="' + c.chave + '" value="' + esc(val) + '" placeholder="Digite para buscar…" autocomplete="off">'
+      + '<div id="cs-ac-' + c.chave + '" class="cs-autocomplete-list" style="display:none;"></div>'
+      + '</div>';
+  } else if(c.tipo === 'select' && c.fonte){
+    /* Select que carrega dados de uma tabela Supabase */
+    inputHtml = '<select id="cs-f-' + c.chave + '" class="cs-input cs-select-dinamico" data-chave="' + c.chave + '" data-fonte="' + c.fonte + '" data-campo-fonte="' + c.campoFonte + '">'
+      + '<option value="">Selecione…</option>'
+      + '</select>';
   } else {
-    inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val) + '">';
+    inputHtml = '<input type="text" id="cs-f-' + c.chave + '" class="cs-input" value="' + esc(val) + '"' + (c.readonly ? ' readonly' : '') + '>';
   }
   return '<div class="fld"><label>' + esc(c.label) + (c.obrigatorio ? ' *' : '') + '</label>' + inputHtml + '</div>';
 }
@@ -3835,12 +3895,110 @@ function selecionarColaboradorLookup(matricula){
   closeDlg('dlg-lookup-colaborador');
 }
 
+function csInicializarCamposEspeciais(cfg){
+  /* Inicializa autocomplete e selects dinâmicos */
+  setTimeout(function(){
+    /* Inicializar selects dinâmicos */
+    cfg.campos.forEach(function(c){
+      if(c.tipo === 'select' && c.fonte){
+        csCarregarSelectDinamico(c);
+      } else if(c.tipo === 'autocomplete'){
+        csInicializarAutocomplete(c, cfg);
+      }
+    });
+  }, 100);
+}
+
+function csCarregarSelectDinamico(c){
+  var selectEl = $('cs-f-' + c.chave);
+  if(!selectEl) return;
+  sbClient.from(c.fonte).select(c.campoFonte).then(function(result){
+    var dados = result.data || [];
+    var filtro = c.filtroFonte || {};
+    dados = dados.filter(function(d){
+      for(var k in filtro){
+        if(d[k] !== filtro[k]) return false;
+      }
+      return true;
+    });
+    var html = '<option value="">Selecione…</option>';
+    dados.forEach(function(d){
+      html += '<option value="' + esc(d[c.campoFonte]) + '">' + esc(d[c.campoFonte]) + '</option>';
+    });
+    selectEl.innerHTML = html;
+  }).catch(function(err){ console.error('Erro ao carregar select:', err); });
+}
+
+function csInicializarAutocomplete(c, cfg){
+  var inputEl = $('cs-f-' + c.chave);
+  if(!inputEl) return;
+  inputEl.addEventListener('input', function(){
+    csAtualizarAutocomplete(c, cfg, this.value);
+  });
+  inputEl.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      var list = $('cs-ac-' + c.chave);
+      var items = list ? Array.from(list.querySelectorAll('.cs-ac-item')) : [];
+      // Lógica de navegação
+    }
+  });
+}
+
+function csAtualizarAutocomplete(c, cfg, busca){
+  var listEl = $('cs-ac-' + c.chave);
+  if(!listEl) return;
+  busca = (busca || '').trim().toLowerCase();
+  if(!busca){
+    listEl.style.display = 'none';
+    return;
+  }
+  sbClient.from(c.fonte).select(c.campoFonte).then(function(result){
+    var dados = result.data || [];
+    var filtro = c.filtroFonte || {};
+    dados = dados.filter(function(d){
+      for(var k in filtro){
+        if(d[k] !== filtro[k]) return false;
+      }
+      return true;
+    });
+    dados = dados.filter(function(d){
+      return String(d[c.campoFonte]||'').toLowerCase().indexOf(busca) >= 0;
+    }).slice(0, 10);
+
+    var html = dados.map(function(d){
+      return '<div class="cs-ac-item" onclick="csPreencherAutocomplete(\'' + esc(c.chave) + '\', ' + JSON.stringify(d) + ')">' + esc(d[c.campoFonte]) + '</div>';
+    }).join('');
+    listEl.innerHTML = html;
+    listEl.style.display = dados.length > 0 ? 'block' : 'none';
+  }).catch(function(err){ console.error('Erro ao buscar autocomplete:', err); });
+}
+
+function csPreencherAutocomplete(chave, item){
+  var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
+  var campo = cfg.campos.find(function(c){ return c.chave === chave; });
+  if(!campo) return;
+
+  $('cs-f-' + chave).value = item[campo.campoFonte];
+  $('cs-ac-' + chave).style.display = 'none';
+
+  // Preencher campos automáticos
+  if(campo.preencheAoSelecionar){
+    for(var k in campo.preencheAoSelecionar){
+      var valor = item[campo.preencheAoSelecionar[k]];
+      var el = $('cs-f-' + k);
+      if(el) el.value = valor || '';
+    }
+  }
+}
+
 function csAbrirNovo(){
   var cfg = CADASTROS_SIMPLES[stateCadSimples.chave];
   if(!cfg) return;
   stateCadSimples.editandoId = null;
   $('cs-dlg-titulo').textContent = 'Novo — ' + cfg.titulo;
   $('cs-dlg-form').innerHTML = csMontarForm(cfg, null);
+  csInicializarCamposEspeciais(cfg);
   openDlg('dlg-cad-simples');
 }
 
@@ -3852,6 +4010,7 @@ function csAbrirEditar(id){
   stateCadSimples.editandoId = id;
   $('cs-dlg-titulo').textContent = 'Editar — ' + cfg.titulo;
   $('cs-dlg-form').innerHTML = csMontarForm(cfg, item);
+  csInicializarCamposEspeciais(cfg);
   openDlg('dlg-cad-simples');
 }
 
@@ -3873,6 +4032,11 @@ async function salvarCadSimples(){
       return;
     }
     var el = $('cs-f-' + c.chave);
+    if(c.tipo === 'checkbox'){
+      /* Checkbox retorna booleano, não string */
+      payload[c.chave] = el ? el.checked : false;
+      return;
+    }
     var v = el ? el.value : '';
     if(c.obrigatorio && !String(v).trim() && !erroCampo){ erroCampo = 'Preencha o campo "' + c.label + '".'; }
     if(c.tipo === 'number'){ payload[c.chave] = numeroBRParaFloat(v); }
@@ -7835,6 +7999,12 @@ function sideSearch(){
 function abrirDashboardAfastados(){
   $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none'; $('view-importacao-pericias').style.display='none'; $('view-importacao-afastados').style.display='none';
   $('view-dashboard').style.display='flex';
+
+  // Esconder abas genéricas
+  if($('viz-tab-quadro')) $('viz-tab-quadro').style.display='none';
+  if($('viz-tab-indicadores')) $('viz-tab-indicadores').style.display='none';
+  if($('viz-tab-provisoes')) $('viz-tab-provisoes').style.display='none';
+
   $('dash-crumb').textContent = 'Medicina Ocupacional > Relatórios e Dashboards';
   $('dash-titulo').textContent = 'Dashboards Afastados';
   $('viz-conteudo').innerHTML = '<div style="padding:40px;text-align:center;">Carregando dashboard...</div>';
@@ -8147,6 +8317,12 @@ function statusAtendimentoBgColor(status){
 function abrirDashboardAtendimentos(){
   $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none'; $('view-importacao-pericias').style.display='none'; $('view-importacao-afastados').style.display='none';
   $('view-dashboard').style.display='flex';
+
+  // Esconder abas genéricas de outros dashboards
+  if($('viz-tab-quadro')) $('viz-tab-quadro').style.display='none';
+  if($('viz-tab-indicadores')) $('viz-tab-indicadores').style.display='none';
+  if($('viz-tab-provisoes')) $('viz-tab-provisoes').style.display='none';
+
   $('dash-crumb').textContent = 'Recepção > Atendimentos';
   $('dash-titulo').textContent = 'Atendimentos Agendados';
   $('viz-conteudo').innerHTML = '<div style="padding:40px;text-align:center;">Carregando dashboard...</div>';
