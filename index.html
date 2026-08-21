@@ -7796,6 +7796,7 @@ function renderDashboardAfastados(){
     var totalAfastados = afastados.length;
     var porSituacao = {};
     var porEspecie = {};
+    var alertas = { vencida: [], dias30: [], dias90: [], futuro: [], semLimite: [], pericias: [] };
 
     afastados.forEach(function(a){
       var sit = String(a.situacao_beneficio||'Não informado').trim();
@@ -7803,7 +7804,46 @@ function renderDashboardAfastados(){
 
       var esp = String(a.especie||'Não informado').trim();
       porEspecie[esp] = (porEspecie[esp]||0) + 1;
+
+      // ---- Categorizar alertas por data_limite ----
+      if(sit === 'ATIVO'){
+        if(!a.data_limite){
+          alertas.semLimite.push(a);
+        } else {
+          var hoje = new Date();
+          var dataLimite = parseDateISO(a.data_limite);
+          if(!dataLimite){
+            alertas.semLimite.push(a);
+          } else {
+            var diff = Math.ceil((dataLimite - hoje) / (1000 * 60 * 60 * 24));
+            if(diff < 0){
+              alertas.vencida.push({r: a, dias: diff});
+            } else if(diff <= 30){
+              alertas.dias30.push({r: a, dias: diff});
+            } else if(diff <= 90){
+              alertas.dias90.push({r: a, dias: diff});
+            } else {
+              alertas.futuro.push({r: a, dias: diff});
+            }
+          }
+        }
+      }
+
+      // ---- Perícias agendadas ----
+      if(a.data_pericia_medica){
+        var dataPericia = parseDateISO(a.data_pericia_medica);
+        if(dataPericia && dataPericia >= new Date()){
+          alertas.pericias.push({r: a, dias: Math.ceil((dataPericia - new Date()) / (1000 * 60 * 60 * 24))});
+        }
+      }
     });
+
+    // Ordenar alertas
+    alertas.vencida.sort(function(a,b){ return b.dias - a.dias; });
+    alertas.dias30.sort(function(a,b){ return a.dias - b.dias; });
+    alertas.dias90.sort(function(a,b){ return a.dias - b.dias; });
+    alertas.futuro.sort(function(a,b){ return a.dias - b.dias; });
+    alertas.pericias.sort(function(a,b){ return a.dias - b.dias; });
 
     var porSituacaoData = Object.keys(porSituacao).map(function(k){ return {label:k, value: porSituacao[k]}; }).sort(function(a,b){ return b.value - a.value; });
     var porEspecieData = limitarTopN(Object.keys(porEspecie).map(function(k){ return {label:k, value: porEspecie[k]}; }).sort(function(a,b){ return b.value - a.value; }), 10);
@@ -7838,7 +7878,15 @@ function renderDashboardAfastados(){
     var vencimentosMeses = ['Este mês', 'Próx. mês', 'Mês após'];
     var vencimentoData = vencimentosMeses.map(function(label, i){ return {label: label, value: vencimentosPorMes[i]}; });
 
-    // ---- Montar KPIs ----
+    // ---- KPIs de Alertas ----
+    var kpisAlertas = '<div class="viz-grid" style="margin-bottom:22px">'
+      + '<div class="viz-kpi" style="background:#fdecea;border-left:4px solid #d03b3b"><div style="font-size:12px;color:#d03b3b;font-weight:600">Limite Vencida</div><div style="font-size:28px;font-weight:700;color:#d03b3b;margin:6px 0">'+fmtNum(alertas.vencida.length)+'</div></div>'
+      + '<div class="viz-kpi" style="background:#fdf5eb;border-left:4px solid #ec835a"><div style="font-size:12px;color:#ec835a;font-weight:600">Vence em até 30 dias</div><div style="font-size:28px;font-weight:700;color:#ec835a;margin:6px 0">'+fmtNum(alertas.dias30.length)+'</div></div>'
+      + '<div class="viz-kpi" style="background:#fdf3e0;border-left:4px solid #c07a00"><div style="font-size:12px;color:#c07a00;font-weight:600">Vence em 31-90 dias</div><div style="font-size:28px;font-weight:700;color:#c07a00;margin:6px 0">'+fmtNum(alertas.dias90.length)+'</div></div>'
+      + '<div class="viz-kpi" style="background:#e7f6e2;border-left:4px solid #0d8a2e"><div style="font-size:12px;color:#0d8a2e;font-weight:600">Perícias agendadas</div><div style="font-size:28px;font-weight:700;color:#0d8a2e;margin:6px 0">'+fmtNum(alertas.pericias.length)+'</div></div>'
+      + '</div>';
+
+    // ---- Montar KPIs principais ----
     var kpis = vizKpiRow([
       {label:'Total de Afastados', value: fmtNum(totalAfastados)},
       {label:'Ativos', value: fmtNum(qtdAtivos)},
@@ -7847,8 +7895,11 @@ function renderDashboardAfastados(){
       {label:'Prorrogados', value: fmtNum(qtdProrrogados)}
     ]);
 
+    // ---- Seções de Alertas ----
+    var alertasHtml = renderAlertsafastados(alertas);
+
     // ---- Cards com gráficos ----
-    var html = kpis + '<div class="viz-grid">'
+    var html = kpis + kpisAlertas + alertasHtml + '<div class="viz-grid">'
       + vizCard('Afastados por Situação', 'Distribuição das situações de benefício', vizBarChart(porSituacaoData), porSituacaoData.map(function(d){return [d.label,d.value];}), ['Situação','Quantidade'], 'card-afastados-sit')
       + vizCard('Vencimentos Próximos Meses', 'Data limite se aproximando', vizBarChart(vencimentoData), vencimentoData.map(function(d){return [d.label,d.value];}), ['Período','Vencimentos'], 'card-afastados-venc')
       + vizCard('Afastados por Espécie', 'Top 10 tipos de afastamento', vizBarChart(porEspecieData), porEspecieData.map(function(d){return [d.label,d.value];}), ['Espécie','Quantidade'], 'card-afastados-esp')
@@ -7917,6 +7968,104 @@ function renderDashboardAfastados(){
     el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Erro ao carregar dados do dashboard: '+esc(err.message)+'</div>';
     console.error('Dashboard error:', err);
   });
+}
+
+function renderAlertsafastados(alertas){
+  var html = '';
+
+  // Sem alertas críticos
+  if(alertas.vencida.length === 0 && alertas.dias30.length === 0 && alertas.semLimite.length === 0 && alertas.dias90.length === 0){
+    html += '<div style="background:rgb(231,246,226);border:1px solid rgb(197,229,180);border-left:3px solid #0d8a2e;border-radius:12px;padding:16px;margin-bottom:20px;display:flex;gap:12px;align-items:center">'
+      + '<div style="color:#0d8a2e;font-size:20px">✓</div>'
+      + '<div>'
+      + '<div style="font-weight:600;color:#0d8a2e">Nenhum prazo crítico pendente</div>'
+      + '<div style="font-size:12px;color:#2d5016;margin-top:2px">Não há afastamentos com data limite vencida ou vencendo em até 90 dias.</div>'
+      + '</div></div>';
+  }
+
+  // Limite vencida
+  if(alertas.vencida.length > 0){
+    var rows = alertas.vencida.map(function(item){
+      var dias = Math.abs(item.dias);
+      return '<div style="padding:10px;border-top:1px solid rgba(245,241,230,.1);display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;align-items:center">'
+        + '<div><div style="font-weight:600;font-size:13px">'+esc(item.r.nome||'—')+'</div><div style="font-size:12px;color:#8C8B82">NIT '+esc(item.r.nit||'—')+'</div></div>'
+        + '<div style="font-size:12px;color:#8C8B82">'+esc(item.r.especie||'—')+'</div>'
+        + '<div style="font-size:11px;font-weight:600;color:#d03b3b">VENCIDA HÁ '+fmtNum(dias)+' '+(dias === 1 ? 'DIA' : 'DIAS')+'</div>'
+        + '</div>';
+    }).join('');
+    html += '<div style="background:#1E2E12;border:1px solid rgba(208,59,59,.3);border-left:3px solid #d03b3b;border-radius:12px;padding:16px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="color:#d03b3b">⚠️</span><h3 style="font-size:15px;font-weight:600">Data limite vencida</h3><span style="margin-left:auto;font-size:11px;color:#8C8B82">'+alertas.vencida.length+' REGISTROS</span></div>'
+      + '<div style="font-size:12.5px;color:#8C8B82;margin-bottom:10px">Benefícios ainda ativos após a data limite — verifique cessação, prorrogação ou retorno ao trabalho.</div>'
+      + rows
+      + '</div>';
+  }
+
+  // Vence em até 30 dias
+  if(alertas.dias30.length > 0){
+    var rows = alertas.dias30.map(function(item){
+      return '<div style="padding:10px;border-top:1px solid rgba(245,241,230,.1);display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;align-items:center">'
+        + '<div><div style="font-weight:600;font-size:13px">'+esc(item.r.nome||'—')+'</div><div style="font-size:12px;color:#8C8B82">NIT '+esc(item.r.nit||'—')+'</div></div>'
+        + '<div style="font-size:12px;color:#8C8B82">'+esc(item.r.especie||'—')+'</div>'
+        + '<div style="font-size:11px;font-weight:600;color:#ec835a">EM '+fmtNum(item.dias)+' '+(item.dias === 1 ? 'DIA' : 'DIAS')+'</div>'
+        + '</div>';
+    }).join('');
+    html += '<div style="background:#1E2E12;border:1px solid rgba(236,131,90,.3);border-left:3px solid #ec835a;border-radius:12px;padding:16px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="color:#ec835a">🕐</span><h3 style="font-size:15px;font-weight:600">Vence em até 30 dias</h3><span style="margin-left:auto;font-size:11px;color:#8C8B82">'+alertas.dias30.length+' REGISTROS</span></div>'
+      + '<div style="font-size:12.5px;color:#8C8B82;margin-bottom:10px">Prazo imediato — preparar pedido de prorrogação ou o retorno do colaborador.</div>'
+      + rows
+      + '</div>';
+  }
+
+  // Vence em 31-90 dias
+  if(alertas.dias90.length > 0){
+    var rows = alertas.dias90.map(function(item){
+      return '<div style="padding:10px;border-top:1px solid rgba(245,241,230,.1);display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;align-items:center">'
+        + '<div><div style="font-weight:600;font-size:13px">'+esc(item.r.nome||'—')+'</div><div style="font-size:12px;color:#8C8B82">NIT '+esc(item.r.nit||'—')+'</div></div>'
+        + '<div style="font-size:12px;color:#8C8B82">'+esc(item.r.especie||'—')+'</div>'
+        + '<div style="font-size:11px;font-weight:600;color:#c07a00">EM '+fmtNum(item.dias)+' DIAS</div>'
+        + '</div>';
+    }).join('');
+    html += '<div style="background:#1E2E12;border:1px solid rgba(192,122,0,.3);border-left:3px solid #c07a00;border-radius:12px;padding:16px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="color:#c07a00">📋</span><h3 style="font-size:15px;font-weight:600">Vence em 31-90 dias</h3><span style="margin-left:auto;font-size:11px;color:#8C8B82">'+alertas.dias90.length+' REGISTROS</span></div>'
+      + '<div style="font-size:12.5px;color:#8C8B82;margin-bottom:10px">Horizonte de planejamento — antecipar documentação e perícias.</div>'
+      + rows
+      + '</div>';
+  }
+
+  // Sem data limite
+  if(alertas.semLimite.length > 0){
+    var rows = alertas.semLimite.slice(0, 5).map(function(item){
+      return '<div style="padding:10px;border-top:1px solid rgba(245,241,230,.1);display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;align-items:center">'
+        + '<div><div style="font-weight:600;font-size:13px">'+esc(item.nome||'—')+'</div><div style="font-size:12px;color:#8C8B82">NIT '+esc(item.nit||'—')+'</div></div>'
+        + '<div style="font-size:12px;color:#8C8B82">'+esc(item.especie||'—')+'</div>'
+        + '<div style="font-size:11px;font-weight:600;color:#8C8B82">VERIFICAR</div>'
+        + '</div>';
+    }).join('');
+    var moreText = alertas.semLimite.length > 5 ? '<div style="padding:10px;color:#8C8B82;font-size:11px">+ '+(alertas.semLimite.length - 5)+' mais registros sem data limite</div>' : '';
+    html += '<div style="background:#1E2E12;border:1px solid rgba(140,139,130,.3);border-left:3px solid #8C8B82;border-radius:12px;padding:16px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="color:#8C8B82">ℹ️</span><h3 style="font-size:15px;font-weight:600">Sem data limite registrada</h3><span style="margin-left:auto;font-size:11px;color:#8C8B82">'+alertas.semLimite.length+' REGISTROS</span></div>'
+      + '<div style="font-size:12.5px;color:#8C8B82;margin-bottom:10px">Benefícios ativos sem data limite — confirmar prazo junto ao INSS ou classificar como de longa duração.</div>'
+      + rows + moreText
+      + '</div>';
+  }
+
+  // Perícias agendadas
+  if(alertas.pericias.length > 0){
+    var rows = alertas.pericias.map(function(item){
+      return '<div style="padding:10px;border-top:1px solid rgba(245,241,230,.1);display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;align-items:center">'
+        + '<div><div style="font-weight:600;font-size:13px">'+esc(item.r.nome||'—')+'</div><div style="font-size:12px;color:#8C8B82">NIT '+esc(item.r.nit||'—')+'</div></div>'
+        + '<div style="font-size:12px;color:#8C8B82">'+esc(item.r.especie||'—')+'</div>'
+        + '<div style="font-size:11px;color:#8C8B82">'+(item.dias === 0 ? 'HOJE' : 'EM '+fmtNum(item.dias)+' DIAS')+'</div>'
+        + '</div>';
+    }).join('');
+    html += '<div style="background:#1E2E12;border:1px solid rgba(140,139,130,.3);border-left:3px solid #8C8B82;border-radius:12px;padding:16px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="color:#8C8B82">📅</span><h3 style="font-size:15px;font-weight:600">Perícias médicas agendadas</h3><span style="margin-left:auto;font-size:11px;color:#8C8B82">'+alertas.pericias.length+' REGISTROS</span></div>'
+      + '<div style="font-size:12.5px;color:#8C8B82;margin-bottom:10px">Datas de perícia iguais ou posteriores a hoje.</div>'
+      + rows
+      + '</div>';
+  }
+
+  return html;
 }
 
 function statusBgColor(status){
