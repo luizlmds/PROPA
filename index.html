@@ -3347,9 +3347,23 @@ async function csAtualizarCampoInline(id, chave, valorNovo){
 
 async function transferirProcessoParaArquivado(id, processo){
   try{
-    /* Copiar para jur_processos_arquivados */
-    var novoProcessoArquivado = Object.assign({}, processo);
-    delete novoProcessoArquivado.id; /* Deixa o BD gerar novo ID */
+    /* Mapear campos de jur_processos para jur_processos_arquivados
+       (as tabelas têm estruturas diferentes) */
+    var novoProcessoArquivado = {
+      filial: processo.filial || null,
+      centro_custo: processo.centro_custo || null,
+      numero_processo: processo.numero_processo || null,
+      polo_ativo: processo.polo_ativo || null,
+      polo_passivo: null, /* Campo específico de arquivados — não existe em ativos */
+      data_distribuicao: processo.data_distribuicao || null,
+      valor_causa: processo.valor_causa_atualizado || null, /* Mapeia valor_causa_atualizado → valor_causa */
+      valor_pago: null, /* Preenchido depois manualmente */
+      data_encerramento: null, /* Preenchido depois manualmente */
+      objeto: processo.objeto || null,
+      motivo_encerramento: null, /* Preenchido depois manualmente */
+      vara_camara: null /* Preenchido depois manualmente */
+    };
+
     var respInsert = await sbClient.from('jur_processos_arquivados').insert([novoProcessoArquivado]);
     if(respInsert.error) throw respInsert.error;
 
