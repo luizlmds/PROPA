@@ -3332,11 +3332,37 @@ async function csAtualizarCampoInline(id, chave, valorNovo){
     if(resp.error) throw resp.error;
     toast(cfg.titulo + ' atualizado(a).');
     if(cfg.filtrosColuna) renderCsFiltroColunas(cfg);
+
+    /* Se é Processos Ativos e status muda de ATIVO pra outro, transferir para Arquivados */
+    if(cfg.tabela === 'jur_processos' && chave === 'status' && valorAnterior === 'ATIVO' && valorNovo !== 'ATIVO'){
+      await transferirProcessoParaArquivado(id, item);
+    }
   } catch(erro){
     item[chave] = valorAnterior;
     renderCadSimplesTabela();
     toast(dpFormatarErroSupabase('Não foi possível salvar', erro), true, 9000);
     console.error('Falha ao atualizar campo "' + chave + '" em ' + cfg.tabela + ':', erro);
+  }
+}
+
+async function transferirProcessoParaArquivado(id, processo){
+  try{
+    /* Copiar para jur_processos_arquivados */
+    var novoProcessoArquivado = Object.assign({}, processo);
+    delete novoProcessoArquivado.id; /* Deixa o BD gerar novo ID */
+    var respInsert = await sbClient.from('jur_processos_arquivados').insert([novoProcessoArquivado]);
+    if(respInsert.error) throw respInsert.error;
+
+    /* Deletar de jur_processos */
+    var respDelete = await sbClient.from('jur_processos').delete().eq('id', id);
+    if(respDelete.error) throw respDelete.error;
+
+    /* Recarregar a tabela e notificar */
+    await carregarCadSimples();
+    toast('Processo transferido para Processos Arquivados.', false, 5000);
+  } catch(erro){
+    toast(dpFormatarErroSupabase('Erro ao transferir processo para arquivados', erro), true, 9000);
+    console.error('Falha ao transferir processo:', erro);
   }
 }
 
