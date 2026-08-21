@@ -2046,7 +2046,7 @@ var AMBIENTES = [
       {
         titulo: 'Relatórios e Dashboards',
         sub: 'Selecione a rotina na lista abaixo',
-        itens: ['Exames a Vencer','Aptos e Inaptos']
+        itens: ['Exames a Vencer','Aptos e Inaptos','Dashboards Afastados']
       }
     ]
   }
@@ -2716,7 +2716,8 @@ var ROTINAS_PRONTAS = {
   'Controle de Perícias::Importar Perícias': 'abrirImportacaoPericias',
   'Relatórios e Dashboards::Dashboards Jurídico': 'abrirDashboardJuridico',
   'Controle de Afastados::Controle de Afastados': 'abrirAfastados',
-  'Controle de Afastados::Importar Afastados': 'abrirImportacaoAfastados'
+  'Controle de Afastados::Importar Afastados': 'abrirImportacaoAfastados',
+  'Relatórios e Dashboards::Dashboards Afastados': 'abrirDashboardAfastados'
 };
 
 function acionarRotina(chave){
@@ -3187,7 +3188,7 @@ var CADASTROS_SIMPLES = {
     secao: 'Controle de Afastados',
     titulo: 'Afastados',
     tabela: 'med_afastados',
-    instrucao: 'Cadastre e acompanhe os colaboradores afastados — mesmos campos da planilha modelo, todos editáveis. Clique numa linha da tabela para editar tudo, ou mude dados direto na lista. Use "Importar Afastados" para trazer tudo direto da planilha — registros com CPF duplicado serão atualizados (não duplicados).',
+    instrucao: 'Cadastre e acompanhe os colaboradores afastados — mesmos campos da planilha modelo, todos editáveis. Clique numa linha da tabela para editar tudo, ou mude Situação direto na lista. Use "Importar Afastados" para trazer tudo direto da planilha — cada linha vira um registro próprio (permite CPFs duplicados).',
     campoBusca: ['cpf','nome'],
     campos: [
       { chave:'cpf', label:'CPF', tipo:'text', obrigatorio:true },
@@ -3211,6 +3212,9 @@ var CADASTROS_SIMPLES = {
       { chave:'observacoes', label:'Observações', tipo:'textarea', largura:'full' }
     ],
     colunasTabela: ['cpf','nome','nit','situacao_beneficio','data_inicio_beneficio','data_limite','telefone'],
+    colunasInlineSelect: {
+      situacao_beneficio: ['ATIVO','CESSADO','SUSPENSO','PRORROGADO']
+    },
     colunasStatusColorido: ['situacao_beneficio'],
     filtrosColuna: [
       { chave:'situacao_beneficio', label:'Situação Benefício', tipo:'select' },
@@ -6850,7 +6854,7 @@ function processarLinhasImportacaoAfastadosInternal(rows, ids){
   $(ids.summary).style.display = 'flex';
   $(ids.confirmBar).style.display = 'flex';
   renderImportAfastadosPreviewTable(mapeados, ids);
-  impAfastadosMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — registros com CPF duplicado serão atualizados (não duplicados). Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+  impAfastadosMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — cada linha da planilha será um registro próprio (duplicatas de CPF são permitidas). Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
 }
 
 function renderImportAfastadosPreviewTable(lista, ids){
@@ -6877,43 +6881,34 @@ async function aplicarImportacaoAfastadosInternal(ids){
   var linhas = state.importAfastadosPreview.map(medAfastadosParaLinha);
   var qtd = linhas.length;
 
-  /* Remover duplicatas dentro do próprio lote: para cada CPF, manter apenas o último registro.
-     Isso evita o erro "ON CONFLICT DO UPDATE command cannot affect row a second time" */
-  var mapCpf = {};
-  linhas.forEach(function(linha){
-    if(linha.cpf) mapCpf[linha.cpf] = linha;  /* sobrescreve = mantém o último */
-  });
-  var linhasUnicas = Object.keys(mapCpf).map(function(cpf){ return mapCpf[cpf]; });
-  var duplicatasRemovidas = linhas.length - linhasUnicas.length;
-
   state.importAfastadosPreview = [];
   $(ids.summary).style.display = 'none';
   $(ids.confirmBar).style.display = 'none';
   $(ids.table).style.display = 'none';
   $(ids.fname).textContent = '';
   $(ids.fileInput).value = '';
-
-  var msgExtra = duplicatasRemovidas > 0 ? ' ('+duplicatasRemovidas+' duplicata(s) removida(s))' : '';
-  impAfastadosMsg(linhasUnicas.length+' afastado(s) será(ão) salvo(s)'+msgExtra+' — salvando no Supabase agora… <a onclick="abrirAfastados()">Ver Afastados</a>', 'ok');
+  impAfastadosMsg(qtd+' afastado(s) será(ão) salvo(s) — salvando no Supabase agora… <a onclick="abrirAfastados()">Ver Afastados</a>', 'ok');
   toast(qtd+' afastado(s) importado(s). Salvando no Supabase…');
 
   var falhas = 0;
   var primeiroErro = null;
-  /* Fazer upsert linha por linha para evitar conflito com duplicatas no mesmo lote */
-  for(var i = 0; i < linhasUnicas.length; i++){
+  /* INSERT simples (não UPSERT) - cada linha da planilha vira um registro próprio,
+     mesmo que haja CPFs duplicados. Lotes de DP_IMPORT_LOTE linhas. */
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
     try{
-      var resp = await sbClient.from('med_afastados').upsert([linhasUnicas[i]], { onConflict: 'cpf' });
+      var resp = await sbClient.from('med_afastados').insert(lote);
       if(resp.error) throw resp.error;
     } catch(erro){
-      console.error(dpFormatarErroSupabase('Falha ao importar afastado linha ' + i, erro));
-      falhas++;
+      console.error(dpFormatarErroSupabase('Falha ao importar afastados (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
       if(!primeiroErro) primeiroErro = erro;
     }
   }
   if(!falhas){
-    toast(linhasUnicas.length + ' afastado(s) salvo(s) no Supabase (novos inseridos, existentes atualizados).'+msgExtra);
+    toast(qtd + ' afastado(s) salvo(s) no Supabase.');
   } else {
-    toast(dpFormatarErroSupabase((linhasUnicas.length-falhas)+' afastado(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+    toast(dpFormatarErroSupabase((qtd-falhas)+' afastado(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
   }
 }
 
@@ -7773,6 +7768,159 @@ function fmtValorBRCompacto(n){
 function sideSearch(){
   var v = $('side-search').value;
   if(v) toast('Busca por "'+v+'" - funcionalidade em desenvolvimento.');
+}
+
+/* ====== Dashboard Afastados ====== */
+function abrirDashboardAfastados(){
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none'; $('view-importacao-pericias').style.display='none'; $('view-importacao-afastados').style.display='none';
+  $('view-dashboard').style.display='flex';
+  $('dash-crumb').textContent = 'Medicina Ocupacional > Relatórios e Dashboards';
+  $('dash-titulo').textContent = 'Dashboards Afastados';
+  $('viz-conteudo').innerHTML = '<div style="padding:40px;text-align:center;">Carregando dashboard...</div>';
+  renderDashboardAfastados();
+}
+
+function renderDashboardAfastados(){
+  var el = $('viz-conteudo');
+
+  sbClient.from('med_afastados').select('*').then(function(result){
+    var afastados = result.data || [];
+
+    // ---- Total de afastados, contagem por situação ----
+    var totalAfastados = afastados.length;
+    var porSituacao = {};
+    var porEspecie = {};
+
+    afastados.forEach(function(a){
+      var sit = String(a.situacao_beneficio||'Não informado').trim();
+      porSituacao[sit] = (porSituacao[sit]||0) + 1;
+
+      var esp = String(a.especie||'Não informado').trim();
+      porEspecie[esp] = (porEspecie[esp]||0) + 1;
+    });
+
+    var porSituacaoData = Object.keys(porSituacao).map(function(k){ return {label:k, value: porSituacao[k]}; }).sort(function(a,b){ return b.value - a.value; });
+    var porEspecieData = limitarTopN(Object.keys(porEspecie).map(function(k){ return {label:k, value: porEspecie[k]}; }).sort(function(a,b){ return b.value - a.value; }), 10);
+
+    // ---- Contagem de Ativos, Cessados, Suspensos, Prorrogados ----
+    var qtdAtivos = porSituacao['ATIVO'] || 0;
+    var qtdCessados = porSituacao['CESSADO'] || 0;
+    var qtdSuspensos = porSituacao['SUSPENSO'] || 0;
+    var qtdProrrogados = porSituacao['PRORROGADO'] || 0;
+
+    // ---- Afastados que vencerão em breve (data_limite próximas) ----
+    var hoje = new Date();
+    var proximosMeses = [];
+    for(var i = 0; i < 3; i++){
+      var primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+      var ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + i + 1, 0);
+      proximosMeses.push({inicio: primeiroDia, fim: ultimoDia});
+    }
+
+    var vencimentosPorMes = [0, 0, 0];
+    afastados.forEach(function(a){
+      if(!a.data_limite) return;
+      var dt = parseDateISO(a.data_limite);
+      if(!dt) return;
+      for(var i = 0; i < proximosMeses.length; i++){
+        if(dt >= proximosMeses[i].inicio && dt <= proximosMeses[i].fim){
+          vencimentosPorMes[i]++;
+        }
+      }
+    });
+
+    var vencimentosMeses = ['Este mês', 'Próx. mês', 'Mês após'];
+    var vencimentoData = vencimentosMeses.map(function(label, i){ return {label: label, value: vencimentosPorMes[i]}; });
+
+    // ---- Montar KPIs ----
+    var kpis = vizKpiRow([
+      {label:'Total de Afastados', value: fmtNum(totalAfastados)},
+      {label:'Ativos', value: fmtNum(qtdAtivos)},
+      {label:'Cessados', value: fmtNum(qtdCessados)},
+      {label:'Suspensos', value: fmtNum(qtdSuspensos)},
+      {label:'Prorrogados', value: fmtNum(qtdProrrogados)}
+    ]);
+
+    // ---- Cards com gráficos ----
+    var html = kpis + '<div class="viz-grid">'
+      + vizCard('Afastados por Situação', 'Distribuição das situações de benefício', vizBarChart(porSituacaoData), porSituacaoData.map(function(d){return [d.label,d.value];}), ['Situação','Quantidade'], 'card-afastados-sit')
+      + vizCard('Vencimentos Próximos Meses', 'Data limite se aproximando', vizBarChart(vencimentoData), vencimentoData.map(function(d){return [d.label,d.value];}), ['Período','Vencimentos'], 'card-afastados-venc')
+      + vizCard('Afastados por Espécie', 'Top 10 tipos de afastamento', vizBarChart(porEspecieData), porEspecieData.map(function(d){return [d.label,d.value];}), ['Espécie','Quantidade'], 'card-afastados-esp')
+      + '</div>';
+
+    // ---- Tabela de afastados recentes (últimos 10) ----
+    var afastadosRecentes = afastados.sort(function(a,b){ return ((b.created_at||'').localeCompare(a.created_at||'')); }).slice(0, 10);
+    var recHtml = '<div class="viz-grid full"><div class="viz-card">'
+      + '<div class="viz-card-head"><h3>Afastados Incluídos Recentemente</h3>'
+      + '<div class="cap">Últimos 10 registros</div></div>'
+      + '<div class="vz-body">';
+
+    if(afastadosRecentes.length === 0){
+      recHtml += '<div class="vz-empty">Nenhum afastado cadastrado ainda.</div>';
+    } else {
+      recHtml += '<table class="vz-table"><thead><tr>'
+        + '<th>CPF</th><th>Nome</th><th>NIT</th><th>Situação</th><th>Data Início</th><th>Data Limite</th></tr></thead><tbody>';
+      afastadosRecentes.forEach(function(a){
+        recHtml += '<tr>'
+          + '<td>'+esc(a.cpf||'—')+'</td>'
+          + '<td>'+esc(a.nome||'—')+'</td>'
+          + '<td>'+esc(a.nit||'—')+'</td>'
+          + '<td><span style="display:inline-block;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;background:'+statusBgColor(a.situacao_beneficio)+'">'+esc(a.situacao_beneficio||'—')+'</span></td>'
+          + '<td>'+fmtDiaMes(parseDateISO(a.data_inicio_beneficio))+'</td>'
+          + '<td>'+fmtDiaMes(parseDateISO(a.data_limite))+'</td>'
+          + '</tr>';
+      });
+      recHtml += '</tbody></table>';
+    }
+    recHtml += '</div></div></div>';
+    html += recHtml;
+
+    // ---- Tabela de vencimentos próximos (data_limite) ----
+    var vencimentosProximos = afastados
+      .filter(function(a){ return a.data_limite; })
+      .sort(function(a,b){ return (a.data_limite||'').localeCompare(b.data_limite||''); })
+      .slice(0, 10);
+
+    var vencHtml = '<div class="viz-grid full"><div class="viz-card">'
+      + '<div class="viz-card-head"><h3>Vencimentos Próximos (Data Limite)</h3>'
+      + '<div class="cap">Próximos 10 para vencer</div></div>'
+      + '<div class="vz-body">';
+
+    if(vencimentosProximos.length === 0){
+      vencHtml += '<div class="vz-empty">Nenhum vencimento próximo.</div>';
+    } else {
+      vencHtml += '<table class="vz-table"><thead><tr>'
+        + '<th>Data Limite</th><th>CPF</th><th>Nome</th><th>Situação</th><th>NIT</th></tr></thead><tbody>';
+      vencimentosProximos.forEach(function(a){
+        vencHtml += '<tr>'
+          + '<td><strong>'+fmtDiaMes(parseDateISO(a.data_limite))+'</strong></td>'
+          + '<td>'+esc(a.cpf||'—')+'</td>'
+          + '<td>'+esc(a.nome||'—')+'</td>'
+          + '<td><span style="display:inline-block;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;background:'+statusBgColor(a.situacao_beneficio)+'">'+esc(a.situacao_beneficio||'—')+'</span></td>'
+          + '<td>'+esc(a.nit||'—')+'</td>'
+          + '</tr>';
+      });
+      vencHtml += '</tbody></table>';
+    }
+    vencHtml += '</div></div></div>';
+    html += vencHtml;
+
+    el.innerHTML = html;
+    attachAllTooltips(el);
+  }).catch(function(err){
+    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Erro ao carregar dados do dashboard: '+esc(err.message)+'</div>';
+    console.error('Dashboard error:', err);
+  });
+}
+
+function statusBgColor(status){
+  switch(String(status||'').toUpperCase()){
+    case 'ATIVO': return 'rgb(231, 246, 226)';      // Verde claro
+    case 'CESSADO': return 'rgb(254, 236, 234)';    // Vermelho claro
+    case 'SUSPENSO': return 'rgb(255, 243, 224)';   // Amarelo claro
+    case 'PRORROGADO': return 'rgb(224, 242, 254)'; // Azul claro
+    default: return 'rgb(240, 240, 240)';           // Cinza
+  }
 }
 
 /* ================= INIT ================= */
