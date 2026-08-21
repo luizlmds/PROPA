@@ -3912,7 +3912,7 @@ function csInicializarCamposEspeciais(cfg){
 function csCarregarSelectDinamico(c){
   var selectEl = $('cs-f-' + c.chave);
   if(!selectEl) return;
-  sbClient.from(c.fonte).select(c.campoFonte).then(function(result){
+  sbClient.from(c.fonte).select('*').then(function(result){
     var dados = result.data || [];
     var filtro = c.filtroFonte || {};
     dados = dados.filter(function(d){
@@ -3953,7 +3953,7 @@ function csAtualizarAutocomplete(c, cfg, busca){
     listEl.style.display = 'none';
     return;
   }
-  sbClient.from(c.fonte).select(c.campoFonte).then(function(result){
+  sbClient.from(c.fonte).select('*').then(function(result){
     var dados = result.data || [];
     var filtro = c.filtroFonte || {};
     dados = dados.filter(function(d){
@@ -3966,8 +3966,13 @@ function csAtualizarAutocomplete(c, cfg, busca){
       return String(d[c.campoFonte]||'').toLowerCase().indexOf(busca) >= 0;
     }).slice(0, 10);
 
-    var html = dados.map(function(d){
-      return '<div class="cs-ac-item" onclick="csPreencherAutocomplete(\'' + esc(c.chave) + '\', ' + JSON.stringify(d) + ')">' + esc(d[c.campoFonte]) + '</div>';
+    /* Armazena os dados em um mapa global por índice, evitando problemas com
+       escapamento de JSON em onclick. Cada item usa um data-index para referenciar. */
+    if(!window.csAutocompleteData) window.csAutocompleteData = {};
+    var html = dados.map(function(d, idx){
+      var dataIdx = c.chave + '_' + idx;
+      window.csAutocompleteData[dataIdx] = d;
+      return '<div class="cs-ac-item" onclick="csPreencherAutocomplete(\'' + esc(c.chave) + '\', window.csAutocompleteData[\'' + esc(dataIdx) + '\'])">' + esc(d[c.campoFonte]) + '</div>';
     }).join('');
     listEl.innerHTML = html;
     listEl.style.display = dados.length > 0 ? 'block' : 'none';
@@ -4038,7 +4043,8 @@ async function salvarCadSimples(){
       return;
     }
     var v = el ? el.value : '';
-    if(c.obrigatorio && !String(v).trim() && !erroCampo){ erroCampo = 'Preencha o campo "' + c.label + '".'; }
+    /* Campos readonly são auto-preenchidos e não devem ser validados como obrigatórios */
+    if(c.obrigatorio && !c.readonly && !String(v).trim() && !erroCampo){ erroCampo = 'Preencha o campo "' + c.label + '".'; }
     if(c.tipo === 'number'){ payload[c.chave] = numeroBRParaFloat(v); }
     else if(c.tipo === 'inteiro'){ payload[c.chave] = numeroBRParaFloat(v); }
     else if(c.tipo === 'date'){ payload[c.chave] = v ? v : null; }
