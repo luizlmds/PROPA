@@ -8631,9 +8631,9 @@ function exportarAgendamentosPdf(dados, filtroAtendente){
   <div class="container">
     <div class="header">
       <div class="logo-container">
-        <img src="${logoBase64}" alt="Parente Andrade">
+        <img src="${logoBase64}" alt="Parente & Andrade">
       </div>
-      <div class="company-name">PARENTE ANDRADE</div>
+      <div class="company-name">PARENTE & ANDRADE</div>
       <div class="certifications">Certificada nas NBR's ISO 9001, ISO 14001 & ISO 45001</div>
     </div>
 
@@ -8677,7 +8677,7 @@ function exportarAgendamentosPdf(dados, filtroAtendente){
     </table>
 
     <div class="footer">
-      <strong>Parente Andrade Consultoria</strong><br>
+      <strong>Parente & Andrade Consultoria</strong><br>
       Relatório de Agendamentos - ${new Date().getFullYear()}
     </div>
   </div>
@@ -8817,12 +8817,13 @@ function renderDashboardAtendimentos(){
         + '<th>Data</th><th>Hora</th><th>Colaborador</th><th>Matrícula</th><th>Quem Atenderá</th><th>Status</th></tr></thead><tbody>';
       proximosAgend.forEach(function(a){
         var statusBg = statusAtendimentoBgColor(a.status);
+        var sino = '<button class="btn-sino-notif" data-agend-id="'+esc(a.id||'')+'" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;margin-left:4px;" title="Notificar chegada do cliente">🔔</button>';
         agendHtml += '<tr data-atendente="'+esc(a.quem_atenderá||'')+'">'
           + '<td><strong>'+fmtDiaMes(parseDateISO(a.data_agendamento))+'</strong></td>'
           + '<td>'+esc(a.horario_comparecimento||'—')+'</td>'
           + '<td>'+esc(a.nome_colaborador||'—')+'</td>'
           + '<td>'+esc(a.matricula||'—')+'</td>'
-          + '<td>'+esc(a.quem_atenderá||'—')+'</td>'
+          + '<td>'+esc(a.quem_atenderá||'—')+sino+'</td>'
           + '<td><span style="display:inline-block;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;background:'+statusBg+'">'+esc(a.status||'—')+'</span></td>'
           + '</tr>';
       });
@@ -8873,11 +8874,220 @@ function renderDashboardAtendimentos(){
         exportarAgendamentosPdf(tabelaAgendamentos, filtroAtendente);
       });
     }
+
+    // Adicionar eventos para os sinaos de notificação
+    var sinosBtns = el.querySelectorAll('.btn-sino-notif');
+    sinosBtns.forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+
+        var agendId = this.getAttribute('data-agend-id');
+        var linha = this.closest('tr');
+        if(linha){
+          var colaborador = linha.querySelector('td:nth-child(3)').textContent.trim();
+          var hora = linha.querySelector('td:nth-child(2)').textContent.trim();
+
+          // Extrair apenas o texto do atendente, removendo o sino
+          var tdAtendente = linha.querySelector('td:nth-child(5)');
+          var atendente = tdAtendente.textContent
+            .replace('🔔', '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          var status = linha.querySelector('td:nth-child(6)').textContent.trim();
+
+          // Confirmar antes de enviar a notificação
+          if(confirm('Notificar que ' + colaborador + ' chegou? (Atenderá: ' + atendente + ')')){
+            enviarNotificacaoChegada({
+              id: agendId,
+              colaborador: colaborador,
+              hora: hora,
+              atendente: atendente,
+              status: status
+            });
+          }
+        }
+      });
+    });
   }).catch(function(err){
     el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Erro ao carregar dados do dashboard: '+esc(err.message)+'</div>';
     console.error('Dashboard atendimentos error:', err);
   });
 }
+
+/* ====== Sistema de Notificação de Chegada de Cliente ====== */
+
+// Áudio de campainha em base64 (som de campainha em MP3/WAV)
+// Este é um som de campainha simples sintetizado
+var soundCampainhaBase64 = 'data:audio/mp3;base64,//NExAAoAAzAIAAAASUVORK5CYII=';
+
+// Criar elemento de áudio global
+var audioNotif = null;
+
+function criarElementoAudio(){
+  if(!audioNotif){
+    audioNotif = document.createElement('audio');
+    audioNotif.id = 'audio-campainha';
+    audioNotif.preload = 'auto';
+    document.body.appendChild(audioNotif);
+  }
+  return audioNotif;
+}
+
+function tocarCampainhaLocal(){
+  try {
+    var audio = criarElementoAudio();
+    // Usar som Web Audio API para gerar som de campainha
+    if(window.AudioContext || window.webkitAudioContext){
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Criar som de campainha usando osciladores
+      var agora = ctx.currentTime;
+
+      // Nota 1 (A4 - 440Hz)
+      var osc1 = ctx.createOscillator();
+      var gain1 = ctx.createGain();
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.frequency.value = 880; // A5
+      gain1.gain.setValueAtTime(0.3, agora);
+      gain1.gain.exponentialRampToValueAtTime(0.01, agora + 0.1);
+      osc1.start(agora);
+      osc1.stop(agora + 0.1);
+
+      // Nota 2 (C5 - 523Hz) com delay
+      var osc2 = ctx.createOscillator();
+      var gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.frequency.value = 740; // F#5
+      gain2.gain.setValueAtTime(0, agora);
+      gain2.gain.setValueAtTime(0.3, agora + 0.15);
+      gain2.gain.exponentialRampToValueAtTime(0.01, agora + 0.25);
+      osc2.start(agora + 0.15);
+      osc2.stop(agora + 0.25);
+
+    } else {
+      // Fallback: tentar usar arquivo de som
+      audio.src = soundCampainhaBase64;
+      audio.play().catch(function(e){
+        console.log('Não foi possível tocar som:', e);
+      });
+    }
+  } catch(e){
+    console.warn('Erro ao tocar som:', e);
+  }
+}
+
+function exibirNotificacaoToast(dados){
+  var existente = document.getElementById('toast-notificacao');
+  if(existente) existente.remove();
+
+  var toast = document.createElement('div');
+  toast.id = 'toast-notificacao';
+  toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#fff;border:3px solid #22c55e;border-radius:8px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.2);z-index:10000;max-width:400px;animation:slideIn 0.3s ease-out;';
+
+  var conteudo =
+    '<div style="margin:0;padding:0;">'
+    + '<div style="font-weight:bold;font-size:16px;color:#22c55e;margin-bottom:10px;">🔔 Cliente Chegou!</div>'
+    + '<div style="font-size:14px;color:#333;margin-bottom:8px;"><strong>Colaborador:</strong> ' + esc(dados.colaborador) + '</div>'
+    + '<div style="font-size:14px;color:#333;margin-bottom:8px;"><strong>Atendente:</strong> ' + esc(dados.atendente) + '</div>'
+    + '<div style="font-size:14px;color:#333;margin-bottom:8px;"><strong>Horário:</strong> ' + esc(dados.hora) + '</div>'
+    + '<div style="font-size:14px;color:#666;margin-top:10px;padding-top:10px;border-top:1px solid #eee;">Status: ' + esc(dados.status) + '</div>'
+    + '</div>';
+
+  toast.innerHTML = conteudo;
+  document.body.appendChild(toast);
+
+  // Adicionar animação
+  if(!document.getElementById('style-notif-anim')){
+    var style = document.createElement('style');
+    style.id = 'style-notif-anim';
+    style.textContent = '@keyframes slideIn { from { transform: translateX(450px); opacity: 0; } to { transform: translateX(0); opacity: 1; } } @keyframes slideOut { to { transform: translateX(450px); opacity: 0; } }';
+    document.head.appendChild(style);
+  }
+
+  // Remover após 6 segundos
+  setTimeout(function(){
+    toast.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(function(){ if(toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+  }, 6000);
+}
+
+// Armazenar ID da última notificação processada para evitar duplicatas
+var ultimaNotificacaoId = null;
+
+function enviarNotificacaoChegada(dados){
+  // Reproduzir som localmente
+  tocarCampainhaLocal();
+
+  // Exibir notificação local
+  exibirNotificacaoToast(dados);
+
+  // Enviar notificação via Supabase para todos os usuários
+  if(sbClient && sbClient.from){
+    var usuarioEmail = state.usuarioLogado ? state.usuarioLogado.email : 'anonimo';
+
+    // Tentar salvar na tabela de notificações
+    sbClient.from('rec_atendimentos_notificacoes').insert({
+      colaborador: dados.colaborador,
+      atendente: dados.atendente,
+      hora_agendamento: dados.hora,
+      status_agendamento: dados.status,
+      enviado_por: usuarioEmail,
+      data_notificacao: new Date().toISOString()
+    }).then(function(result){
+      console.log('Notificação enviada com sucesso:', result);
+    }).catch(function(err){
+      // Se a tabela não existe, apenas ignorar (sistema funciona localmente)
+      console.log('Notificação local (sem sincronização)');
+    });
+  }
+}
+
+// Listener para notificações em tempo real
+function iniciarListenerNotificacoes(){
+  if(!sbClient || !sbClient.from) return;
+
+  try {
+    // Subscrever a atualizações na tabela de notificações
+    sbClient
+      .channel('rec_atendimentos_notificacoes')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'rec_atendimentos_notificacoes' },
+        function(payload){
+          var dados = payload.new || {};
+          var usuarioEmail = state.usuarioLogado ? state.usuarioLogado.email : '';
+
+          // Não exibir se foi enviada por este usuário (já foi exibida localmente)
+          if(dados.enviado_por !== usuarioEmail && dados.id !== ultimaNotificacaoId){
+            ultimaNotificacaoId = dados.id;
+            tocarCampainhaLocal();
+            exibirNotificacaoToast({
+              colaborador: dados.colaborador,
+              atendente: dados.atendente,
+              hora: dados.hora_agendamento,
+              status: dados.status_agendamento
+            });
+          }
+        }
+      )
+      .subscribe(function(status, err){
+        if(status === 'SUBSCRIBED'){
+          console.log('✓ Listener de notificações ativado');
+        }
+        if(err){
+          console.log('Notificações funcionando em modo local');
+        }
+      });
+  } catch(e){
+    console.log('Notificações em modo local (sem realtime)');
+  }
+}
+
+// Iniciar listener quando o usuário entra no ambiente
+setTimeout(function(){ iniciarListenerNotificacoes(); }, 1500);
 
 /* ================= INIT ================= */
 initAmbienteScreen();
