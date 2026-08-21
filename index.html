@@ -3077,7 +3077,7 @@ var CADASTROS_SIMPLES = {
       { chave:'numero_processo', label:'Processo', tipo:'text', obrigatorio:true },
       { chave:'autor', label:'Autor', tipo:'text' },
       { chave:'tipo_pericia', label:'Tipo de Perícia', tipo:'text' },
-      { chave:'dias_quesitos_ass_tec', label:'Dias Quesitos/Ass.Tec.', tipo:'inteiro' },
+      { chave:'dias_quesitos_ass_tec', label:'Prazo Quesitos/Ass.Tec.', tipo:'date' },
       { chave:'causa_pedir', label:'Causa de Pedir', tipo:'text' },
       { chave:'data', label:'Data', tipo:'date' },
       { chave:'modo', label:'Modo', tipo:'text' },
@@ -3088,7 +3088,7 @@ var CADASTROS_SIMPLES = {
       { chave:'responsavel_quesitos', label:'Responsável Quesitos', tipo:'text' },
       { chave:'responsavel_manifestacao', label:'Responsável Manifestação', tipo:'text' },
       { chave:'resultado_laudo_data', label:'Resultado Laudo Data', tipo:'date' },
-      { chave:'prazo_manifestacao_laudo', label:'Prazo Manifestação', tipo:'text' },
+      { chave:'prazo_manifestacao_laudo', label:'Prazo Manifestação', tipo:'date' },
       { chave:'resultado_pericia', label:'Resultado Perícia', tipo:'text' },
       { chave:'justificativa_resultado', label:'Justificativa', tipo:'textarea', largura:'full' },
       { chave:'laudos', label:'Laudos', tipo:'text' }
@@ -6222,8 +6222,8 @@ var COLUNA_MAP_PERICIAS = {
   'justificatia de resultado': 'justificativaResultado',  /* typo na planilha "justificatia" */
   'laudos': 'laudos'
 };
-var CAMPOS_DATA_PERICIAS = ['data', 'resultadoLaudoData'];
-var CAMPOS_NUMERO_PERICIAS = ['qtd', 'diasQuesitosAssTec'];
+var CAMPOS_DATA_PERICIAS = ['data', 'diasQuesitosAssTec', 'resultadoLaudoData', 'prazoManifestacaoLaudo'];
+var CAMPOS_NUMERO_PERICIAS = ['qtd'];
 
 function mapRowToPericias(rawRow){
   var obj = {};
@@ -6255,7 +6255,7 @@ function jurPericiasParaLinha(p){
     numero_processo: p.numeroProcesso || null,
     autor: p.autor || null,
     tipo_pericia: p.tipoPericia || null,
-    dias_quesitos_ass_tec: (p.diasQuesitosAssTec === undefined || p.diasQuesitosAssTec === null) ? null : p.diasQuesitosAssTec,
+    dias_quesitos_ass_tec: dataBRParaISO(p.diasQuesitosAssTec),
     causa_pedir: p.causaPedir || null,
     data: dataBRParaISO(p.data),
     modo: p.modo || null,
@@ -6266,7 +6266,7 @@ function jurPericiasParaLinha(p){
     responsavel_quesitos: p.responsavelQuesitos || null,
     responsavel_manifestacao: p.responsavelManifestacao || null,
     resultado_laudo_data: dataBRParaISO(p.resultadoLaudoData),
-    prazo_manifestacao_laudo: p.prazoManifestacaoLaudo || null,
+    prazo_manifestacao_laudo: dataBRParaISO(p.prazoManifestacaoLaudo),
     resultado_pericia: p.resultadoPericia || null,
     justificativa_resultado: p.justificativaResultado || null,
     laudos: p.laudos || null
