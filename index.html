@@ -6692,22 +6692,44 @@ function initImportDropzonePericiasLocal(){ initImportDropzoneGenerico('impperic
 var COLUNA_MAP_AFASTADOS = {
   'cnpj': 'cnpj',
   'especie': 'especie',
+  'especie de concessao': 'especie',  /* variação possível */
   'nome especie': 'nomeEspecie',
+  'nome esp': 'nomeEspecie',  /* abreviação */
   'nome': 'nome',
   'cpf': 'cpf',
   'nit': 'nit',
   'dt nascimento': 'dataNascimento',
-  'n beneficio': 'numeroBeneficio',  /* ou "numero beneficio" */
+  'data de nascimento': 'dataNascimento',  /* variação */
+  'data nascimento': 'dataNascimento',  /* variação */
+  'n beneficio': 'numeroBeneficio',
   'numero beneficio': 'numeroBeneficio',
+  'numero do beneficio': 'numeroBeneficio',  /* variação */
+  'nº beneficio': 'numeroBeneficio',  /* com símbolo */
   'situacao beneficio': 'situacaoBeneficio',
+  'situacao do beneficio': 'situacaoBeneficio',  /* variação */
   'dt entrada requerimento': 'dataEntradaRequerimento',
+  'data entrada requerimento': 'dataEntradaRequerimento',  /* variação */
+  'data de entrada requerimento': 'dataEntradaRequerimento',
   'dt inicio beneficio': 'dataInicioBeneficio',
+  'data inicio beneficio': 'dataInicioBeneficio',  /* variação */
+  'data de inicio beneficio': 'dataInicioBeneficio',
+  'dt inicio': 'dataInicioBeneficio',  /* abreviação */
   'dt despacho': 'dataDespacho',
+  'data despacho': 'dataDespacho',  /* variação */
+  'data de despacho': 'dataDespacho',
   'data pericia medica': 'dataPericiaMedica',
+  'data da pericia medica': 'dataPericiaMedica',  /* variação */
+  'data perícia': 'dataPericiaMedica',  /* abreviação */
   'conclusao da pericia': 'conclusaoPericia',
+  'conclusao pericia': 'conclusaoPericia',  /* variação */
   'dt limite': 'dataLimite',
+  'data limite': 'dataLimite',  /* variação */
+  'data de limite': 'dataLimite',
   'dt cessacao': 'dataCessacao',
-  'nexo tecnico': 'nexoTecnico'
+  'data cessacao': 'dataCessacao',  /* variação */
+  'data de cessacao': 'dataCessacao',
+  'nexo tecnico': 'nexoTecnico',
+  'nexo tecnico de causa': 'nexoTecnico'  /* variação */
 };
 var CAMPOS_DATA_AFASTADOS = ['dataNascimento','dataEntradaRequerimento','dataInicioBeneficio','dataDespacho','dataPericiaMedica','dataLimite','dataCessacao'];
 
@@ -6790,6 +6812,24 @@ function processarLinhasImportacaoAfastadosInternal(rows, ids){
     impAfastadosMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
     return;
   }
+
+  /* Debug: verificar quais headers foram encontrados */
+  var primeiraLinha = rows[0];
+  var headersEncontrados = [];
+  Object.keys(primeiraLinha).forEach(function(h){
+    var normalizado = normalizeHeader(h);
+    if(COLUNA_MAP_AFASTADOS[normalizado]){
+      headersEncontrados.push(h + ' → ' + COLUNA_MAP_AFASTADOS[normalizado]);
+    }
+  });
+  if(!headersEncontrados.length){
+    impAfastadosMsg('Nenhuma coluna foi reconhecida. Headers encontrados na planilha: ' + Object.keys(primeiraLinha).join(', ') + '. Confira se a primeira linha contém os cabeçalhos.', 'err');
+    $(ids.summary).style.display = 'none';
+    $(ids.confirmBar).style.display = 'none';
+    $(ids.table).style.display = 'none';
+    return;
+  }
+
   var mapeados = [];
   rows.forEach(function(r){
     var a = mapRowToAfastados(r);
@@ -6798,7 +6838,7 @@ function processarLinhasImportacaoAfastadosInternal(rows, ids){
     mapeados.push(a);
   });
   if(!mapeados.length){
-    impAfastadosMsg('Nenhuma linha com CPF foi encontrada na planilha. Confira se a primeira linha contém os cabeçalhos esperados e se há CPFs preenchidos.', 'err');
+    impAfastadosMsg('Nenhuma linha com CPF válido foi encontrada na planilha. Confira se há CPFs preenchidos nas linhas de dados.', 'err');
     $(ids.summary).style.display = 'none';
     $(ids.confirmBar).style.display = 'none';
     $(ids.table).style.display = 'none';
