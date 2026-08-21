@@ -1934,7 +1934,7 @@ var AMBIENTES = [
       {
         titulo: 'Relatórios e Dashboards',
         sub: 'Selecione a rotina na lista abaixo',
-        itens: ['Custos com Processos']
+        itens: ['Dashboards Jurídico']
       }
     ]
   },
@@ -2646,7 +2646,8 @@ var ROTINAS_PRONTAS = {
   'Pagamentos::Pagamentos': 'abrirPagamentosJuridico',
   'Pagamentos::Importar Pagamento': 'abrirImportacaoPagamentos',
   'Controle de Perícias::Perícias': 'abrirPericias',
-  'Controle de Perícias::Importar Perícias': 'abrirImportacaoPericias'
+  'Controle de Perícias::Importar Perícias': 'abrirImportacaoPericias',
+  'Relatórios e Dashboards::Dashboards Jurídico': 'abrirDashboardJuridico'
 };
 
 function acionarRotina(chave){
@@ -7231,6 +7232,171 @@ function renderDashboardProvisoes(){
   });
 
   attachAllTooltips(el);
+}
+
+/* ====== Dashboard Jurídico ====== */
+function abrirDashboardJuridico(){
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none'; $('view-importacao-pericias').style.display='none';
+  $('view-dashboard').style.display='flex';
+  $('dash-crumb').textContent = 'Jurídico > Relatórios e Dashboards';
+  $('dash-titulo').textContent = 'Dashboards Jurídico';
+  $('viz-conteudo').innerHTML = '<div style="padding:40px;text-align:center;">Carregando dashboard...</div>';
+  renderDashboardJuridico();
+}
+
+function renderDashboardJuridico(){
+  var el = $('viz-conteudo');
+
+  Promise.all([
+    sbClient.from('jur_processos').select('*'),
+    sbClient.from('jur_processos_arquivados').select('*'),
+    sbClient.from('jur_pericias').select('*'),
+    sbClient.from('jur_pagamentos').select('*')
+  ]).then(function(results){
+    var processosAtivos = results[0].data || [];
+    var processosArquivados = results[1].data || [];
+    var pericias = results[2].data || [];
+    var pagamentos = results[3].data || [];
+
+    // ---- Custo com processos (valor total) ----
+    var custoAtivos = processosAtivos.reduce(function(s, p){ return s + (Number(p.valor_causa_atualizado)||0); }, 0);
+    var custoArquivados = processosArquivados.reduce(function(s, p){ return s + (Number(p.valor_pago)||0); }, 0);
+    var custoTotal = custoAtivos + custoArquivados;
+
+    // ---- Quantidade de processos por CC (ativos e arquivados) ----
+    var procPorCCAtivos = {};
+    var procPorCCArquivados = {};
+    processosAtivos.forEach(function(p){
+      var cc = String(p.centro_custo||'').trim() || 'Não informado';
+      procPorCCAtivos[cc] = (procPorCCAtivos[cc]||0) + 1;
+    });
+    processosArquivados.forEach(function(p){
+      var cc = String(p.centro_custo||'').trim() || 'Não informado';
+      procPorCCArquivados[cc] = (procPorCCArquivados[cc]||0) + 1;
+    });
+    var procCCAtivosData = Object.keys(procPorCCAtivos).map(function(k){ return {label:k, value: procPorCCAtivos[k]}; }).sort(function(a,b){ return b.value - a.value; });
+    var procCCArquivadosData = Object.keys(procPorCCArquivados).map(function(k){ return {label:k, value: procPorCCArquivados[k]}; }).sort(function(a,b){ return b.value - a.value; });
+
+    // ---- Quantidade de processos por objeto (ativos e arquivados) ----
+    var procPorObjetoAtivos = {};
+    var procPorObjetoArquivados = {};
+    processosAtivos.forEach(function(p){
+      var obj = String(p.objeto||'').trim() || 'Sem objeto';
+      procPorObjetoAtivos[obj] = (procPorObjetoAtivos[obj]||0) + 1;
+    });
+    processosArquivados.forEach(function(p){
+      var obj = String(p.objeto||'').trim() || 'Sem objeto';
+      procPorObjetoArquivados[obj] = (procPorObjetoArquivados[obj]||0) + 1;
+    });
+    var procObjetoAtivosData = limitarTopN(Object.keys(procPorObjetoAtivos).map(function(k){ return {label:k, value: procPorObjetoAtivos[k]}; }).sort(function(a,b){ return b.value - a.value; }), 10);
+    var procObjetoArquivadosData = limitarTopN(Object.keys(procPorObjetoArquivados).map(function(k){ return {label:k, value: procPorObjetoArquivados[k]}; }).sort(function(a,b){ return b.value - a.value; }), 10);
+
+    // ---- Perícias agendadas para a semana (segunda a sexta) ----
+    var hoje = new Date();
+    var diaSemana = hoje.getDay();
+    var segundaAtual = new Date(hoje);
+    segundaAtual.setDate(hoje.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
+    var sextaAtual = new Date(segundaAtual);
+    sextaAtual.setDate(segundaAtual.getDate() + 4);
+
+    var periciasSemanais = pericias.filter(function(p){
+      if(!p.data) return false;
+      var dt = parseDateISO(p.data);
+      return dt >= segundaAtual && dt <= sextaAtual;
+    });
+
+    // ---- Pagamentos provisões para a semana ----
+    var pagamentosSemanais = pagamentos.filter(function(p){
+      if(!p.data_pagamento) return false;
+      var dt = parseDateISO(p.data_pagamento);
+      return dt >= segundaAtual && dt <= sextaAtual;
+    });
+    var totalPagSemanais = pagamentosSemanais.reduce(function(s,p){ return s + (Number(p.valor)||0); }, 0);
+
+    // ---- Montar HTML ----
+    var kpis = vizKpiRow([
+      {label:'Custo Total (Processos)', value: fmtValorBR(custoTotal) || 'R$ 0,00'},
+      {label:'Processos Ativos', value: fmtNum(processosAtivos.length)},
+      {label:'Processos Arquivados', value: fmtNum(processosArquivados.length)},
+      {label:'Perícias Agendadas', value: fmtNum(periciasSemanais.length)},
+      {label:'Pagamentos Previstos (Semana)', value: fmtValorBR(totalPagSemanais) || 'R$ 0,00'}
+    ]);
+
+    var html = kpis + '<div class="viz-grid">'
+      + vizCard('Processos Ativos por CC', 'Distribuição por Centro de Custo', vizBarChart(procCCAtivosData), procCCAtivosData.map(function(d){return [d.label,d.value];}), ['CC','Processos'], 'card-procativos-cc')
+      + vizCard('Processos Arquivados por CC', 'Distribuição por Centro de Custo', vizBarChart(procCCArquivadosData), procCCArquivadosData.map(function(d){return [d.label,d.value];}), ['CC','Processos'], 'card-procarquiv-cc')
+      + vizCard('Processos Ativos por Objeto', 'Top 10 temas processuais', vizBarChart(procObjetoAtivosData), procObjetoAtivosData.map(function(d){return [d.label,d.value];}), ['Objeto','Processos'], 'card-procativos-objeto')
+      + vizCard('Processos Arquivados por Objeto', 'Top 10 temas processuais encerrados', vizBarChart(procObjetoArquivadosData), procObjetoArquivadosData.map(function(d){return [d.label,d.value];}), ['Objeto','Processos'], 'card-procarquiv-objeto')
+      + '</div>';
+
+    // ---- Painel de perícias agendadas ----
+    var periHtml = '<div class="viz-grid full"><div class="viz-card">'
+      + '<div class="viz-card-head"><h3>Perícias Agendadas para a Semana</h3>'
+      + '<div class="cap">De '+fmtDiaMes(segundaAtual)+' a '+fmtDiaMes(sextaAtual)+'</div></div>'
+      + '<div class="vz-body">';
+
+    if(periciasSemanais.length === 0){
+      periHtml += '<div class="vz-empty">Nenhuma perícia agendada para essa semana.</div>';
+    } else {
+      periHtml += '<table class="vz-table"><thead><tr>'
+        + '<th>Data</th><th>Tipo de Perícia</th><th>Perito</th><th>Processo</th><th>Autor</th></tr></thead><tbody>';
+      periciasSemanais.sort(function(a,b){ return (a.data||'').localeCompare(b.data||''); }).forEach(function(p){
+        periHtml += '<tr>'
+          + '<td>'+fmtDiaMes(parseDateISO(p.data))+'</td>'
+          + '<td>'+esc(p.tipo_pericia||'—')+'</td>'
+          + '<td>'+esc(p.perito||'—')+'</td>'
+          + '<td>'+esc(p.numero_processo||'—')+'</td>'
+          + '<td>'+esc(p.autor||'—')+'</td>'
+          + '</tr>';
+      });
+      periHtml += '</tbody></table>';
+    }
+    periHtml += '</div></div></div>';
+    html += periHtml;
+
+    // ---- Painel de pagamentos ----
+    var pagHtml = '<div class="viz-grid full"><div class="viz-card">'
+      + '<div class="viz-card-head"><h3>Pagamentos Provisão para a Semana</h3>'
+      + '<div class="cap">De '+fmtDiaMes(segundaAtual)+' a '+fmtDiaMes(sextaAtual)+'</div></div>'
+      + '<div class="vz-body">';
+
+    if(pagamentosSemanais.length === 0){
+      pagHtml += '<div class="vz-empty">Nenhum pagamento previsto para essa semana.</div>';
+    } else {
+      pagHtml += '<table class="vz-table"><thead><tr>'
+        + '<th>Data</th><th>Descrição</th><th>Valor</th><th>Categoria</th></tr></thead><tbody>';
+      pagamentosSemanais.sort(function(a,b){ return (a.data_pagamento||'').localeCompare(b.data_pagamento||''); }).forEach(function(p){
+        pagHtml += '<tr>'
+          + '<td>'+fmtDiaMes(parseDateISO(p.data_pagamento))+'</td>'
+          + '<td>'+esc(p.nome||'—')+'</td>'
+          + '<td>'+fmtValorBR(p.valor)+'</td>'
+          + '<td>'+esc(p.categoria||'—')+'</td>'
+          + '</tr>';
+      });
+      pagHtml += '</tbody></table>';
+    }
+    pagHtml += '</div></div></div>';
+    html += pagHtml;
+
+    el.innerHTML = html;
+    attachAllTooltips(el);
+  }).catch(function(err){
+    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Erro ao carregar dados do dashboard: '+esc(err.message)+'</div>';
+    console.error('Dashboard error:', err);
+  });
+}
+
+function fmtValorBR(n){
+  var v = Number(n||0);
+  if(v === 0) return 'R$ 0,00';
+  return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function fmtValorBRCompacto(n){
+  var v = Number(n||0);
+  if(v < 1000) return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0});
+  if(v < 1000000) return 'R$ ' + (v/1000).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + 'k';
+  return 'R$ ' + (v/1000000).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + 'M';
 }
 
 function sideSearch(){
