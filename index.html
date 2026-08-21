@@ -7277,10 +7277,9 @@ function renderDashboardJuridico(){
     var pericias = results[2].data || [];
     var pagamentos = results[3].data || [];
 
-    // ---- Custo com processos (valor total) ----
-    var custoAtivos = processosAtivos.reduce(function(s, p){ return s + (Number(p.valor_causa_atualizado)||0); }, 0);
+    // ---- Custo com processos (valor total - apenas processos encerrados/arquivados) ----
     var custoArquivados = processosArquivados.reduce(function(s, p){ return s + (Number(p.valor_pago)||0); }, 0);
-    var custoTotal = custoAtivos + custoArquivados;
+    var custoTotal = custoArquivados;
 
     // ---- Quantidade de processos por CC (ativos e arquivados) ----
     var procPorCCAtivos = {};
