@@ -2049,6 +2049,24 @@ var AMBIENTES = [
         itens: ['Exames a Vencer','Aptos e Inaptos','Dashboards Afastados']
       }
     ]
+  },
+  {
+    codigo: '05',
+    nome: 'Recepção',
+    desc: 'Agendamentos de atendimentos e visitantes',
+    icone: '📋',
+    disponivel: true,
+    banner: {
+      titulo: 'Recepção',
+      texto: 'Controle de agendamentos de atendimentos com colaboradores.'
+    },
+    secoes: [
+      {
+        titulo: 'Atendimentos',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Cadastro de Atendimento','Atendimentos Agendados']
+      }
+    ]
   }
   /* Próximos ambientes (Financeiro, Frota, Suprimentos, etc.) entram aqui. */
 ];
@@ -2717,7 +2735,9 @@ var ROTINAS_PRONTAS = {
   'Relatórios e Dashboards::Dashboards Jurídico': 'abrirDashboardJuridico',
   'Controle de Afastados::Controle de Afastados': 'abrirAfastados',
   'Controle de Afastados::Importar Afastados': 'abrirImportacaoAfastados',
-  'Relatórios e Dashboards::Dashboards Afastados': 'abrirDashboardAfastados'
+  'Relatórios e Dashboards::Dashboards Afastados': 'abrirDashboardAfastados',
+  'Atendimentos::Cadastro de Atendimento': 'abrirCadastroAtendimento',
+  'Atendimentos::Atendimentos Agendados': 'abrirDashboardAtendimentos'
 };
 
 function acionarRotina(chave){
@@ -3223,6 +3243,34 @@ var CADASTROS_SIMPLES = {
       { chave:'data_inicio_beneficio', label:'Data Início', tipo:'daterange' },
       { chave:'data_cessacao', label:'Data Cessação', tipo:'daterange' }
     ]
+  },
+  rec_atendimentos: {
+    ambiente: 'Recepção',
+    secao: 'Atendimentos',
+    titulo: 'Cadastro de Atendimento',
+    tabela: 'rec_atendimentos',
+    instrucao: 'Cadastre agendamentos de atendimentos com colaboradores. Preencha os dados do colaborador, quem irá atender e o horário de comparecimento. Clique numa linha para editar.',
+    campoBusca: ['nome_colaborador','matricula'],
+    campos: [
+      { chave:'nome_colaborador', label:'Nome do Colaborador', tipo:'text', obrigatorio:true },
+      { chave:'matricula', label:'Matrícula', tipo:'text', obrigatorio:true },
+      { chave:'funcao', label:'Função', tipo:'text' },
+      { chave:'quem_atenderá', label:'Quem Atenderá?', tipo:'text', obrigatorio:true },
+      { chave:'data_agendamento', label:'Data do Agendamento', tipo:'date', obrigatorio:true },
+      { chave:'horario_comparecimento', label:'Horário que Comparecerá', tipo:'time', obrigatorio:true },
+      { chave:'status', label:'Status', tipo:'text' },
+      { chave:'observacoes', label:'Observações', tipo:'textarea', largura:'full' }
+    ],
+    colunasTabela: ['nome_colaborador','matricula','funcao','quem_atenderá','data_agendamento','horario_comparecimento','status'],
+    colunasInlineSelect: {
+      status: ['Agendado','Compareceu','Não Compareceu','Cancelado']
+    },
+    colunasStatusColorido: ['status'],
+    filtrosColuna: [
+      { chave:'status', label:'Status', tipo:'select' },
+      { chave:'data_agendamento', label:'Data Agendamento', tipo:'daterange' },
+      { chave:'quem_atenderá', label:'Atendente', tipo:'select' }
+    ]
   }
 };
 
@@ -3234,6 +3282,7 @@ function abrirPericias(){ abrirCadSimples('jur_pericias'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirAfastados(){ abrirCadSimples('med_afastados'); }
+function abrirCadastroAtendimento(){ abrirCadSimples('rec_atendimentos'); }
 function abrirUsuarios(){
   /* Defesa extra: o item "Usuários" já nem aparece no menu/Início pra quem
      não é admin (ver ambienteFiltradoPorPermissao), mas essa checagem aqui
@@ -7420,7 +7469,10 @@ var dashProvisoesGranularidade = 'mes'; // 'dia' | 'semana' | 'mes' | 'ano'
    dashboard de Indicadores (que mostra "últimos 12 meses"). Cada bucket tem
    início/fim (à meia-noite, para comparar direto com parseDateISO) e um
    rótulo pronto para o eixo do gráfico. */
-function fmtDiaMes(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+function fmtDiaMes(d){
+  if(!d) return '—';
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
 var MESES_COMPLETO = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 
 /* Monta o bucket (início/fim/rótulos) de uma granularidade que contém a data "dt". */
@@ -8079,6 +8131,131 @@ function statusBgColor(status){
     case 'PRORROGADO': return 'rgb(224, 242, 254)'; // Azul claro
     default: return 'rgb(240, 240, 240)';           // Cinza
   }
+}
+
+function statusAtendimentoBgColor(status){
+  switch(String(status||'').toUpperCase()){
+    case 'AGENDADO': return 'rgb(224, 242, 254)';      // Azul claro
+    case 'COMPARECEU': return 'rgb(231, 246, 226)';    // Verde claro
+    case 'NÃO COMPARECEU': return 'rgb(254, 236, 234)'; // Vermelho claro
+    case 'CANCELADO': return 'rgb(255, 243, 224)';     // Amarelo claro
+    default: return 'rgb(240, 240, 240)';              // Cinza
+  }
+}
+
+/* ====== Dashboard Recepção - Atendimentos Agendados ====== */
+function abrirDashboardAtendimentos(){
+  $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none'; $('view-importacao-pericias').style.display='none'; $('view-importacao-afastados').style.display='none';
+  $('view-dashboard').style.display='flex';
+  $('dash-crumb').textContent = 'Recepção > Atendimentos';
+  $('dash-titulo').textContent = 'Atendimentos Agendados';
+  $('viz-conteudo').innerHTML = '<div style="padding:40px;text-align:center;">Carregando dashboard...</div>';
+  renderDashboardAtendimentos();
+}
+
+function renderDashboardAtendimentos(){
+  var el = $('viz-conteudo');
+
+  sbClient.from('rec_atendimentos').select('*').then(function(result){
+    var atendimentos = result.data || [];
+
+    // ---- Contagem por status ----
+    var porStatus = {};
+    var porAtendente = {};
+    var hoje = new Date();
+    var atendimentosHoje = 0;
+    var atendimentosProximosSete = 0;
+    var porDia = {};
+    var porSemana = {};
+
+    atendimentos.forEach(function(a){
+      var status = String(a.status||'Agendado').trim();
+      porStatus[status] = (porStatus[status]||0) + 1;
+
+      var atendente = String(a.quem_atenderá||'Não informado').trim();
+      porAtendente[atendente] = (porAtendente[atendente]||0) + 1;
+
+      // Contar atendimentos por dia
+      if(a.data_agendamento){
+        var dataAgend = parseDateISO(a.data_agendamento);
+        if(dataAgend){
+          var diaChave = a.data_agendamento;
+          porDia[diaChave] = (porDia[diaChave]||0) + 1;
+
+          // Contagem para hoje
+          if(dataAgend.toDateString() === hoje.toDateString()) atendimentosHoje++;
+
+          // Contagem para próximos 7 dias
+          var diff = Math.ceil((dataAgend - hoje) / (1000 * 60 * 60 * 24));
+          if(diff >= 0 && diff <= 7) atendimentosProximosSete++;
+
+          // Contar por semana (primeira semana = semana atual)
+          var diffSemana = Math.floor(diff / 7);
+          if(diffSemana >= 0) {
+            var semanaChave = 'Semana ' + (diffSemana + 1);
+            porSemana[semanaChave] = (porSemana[semanaChave]||0) + 1;
+          }
+        }
+      }
+    });
+
+    var porStatusData = Object.keys(porStatus).map(function(k){ return {label:k, value: porStatus[k]}; }).sort(function(a,b){ return b.value - a.value; });
+    var porAtendendeData = Object.keys(porAtendente).map(function(k){ return {label:k, value: porAtendente[k]}; }).sort(function(a,b){ return b.value - a.value; });
+    var porSemanaData = Object.keys(porSemana).map(function(k){ return {label:k, value: porSemana[k]}; });
+
+    // ---- KPI Principal ----
+    var kpis = vizKpiRow([
+      {label:'Total de Agendamentos', value: fmtNum(atendimentos.length)},
+      {label:'Hoje', value: fmtNum(atendimentosHoje)},
+      {label:'Próximos 7 dias', value: fmtNum(atendimentosProximosSete)},
+      {label:'Agendados', value: fmtNum(porStatus['Agendado']||0)}
+    ]);
+
+    // ---- Cards com gráficos ----
+    var html = kpis + '<div class="viz-grid">'
+      + vizCard('Atendimentos por Status', 'Distribuição dos status de atendimento', vizBarChart(porStatusData), porStatusData.map(function(d){return [d.label,d.value];}), ['Status','Quantidade'], 'card-atend-status')
+      + vizCard('Atendimentos por Atendente', 'Carga de trabalho por atendente', vizBarChart(porAtendendeData), porAtendendeData.map(function(d){return [d.label,d.value];}), ['Atendente','Quantidade'], 'card-atend-ate')
+      + vizCard('Atendimentos por Semana', 'Distribuição ao longo das semanas', vizBarChart(porSemanaData), porSemanaData.map(function(d){return [d.label,d.value];}), ['Período','Quantidade'], 'card-atend-sem')
+      + '</div>';
+
+    // ---- Tabela de próximos agendamentos ----
+    var proximosAgend = atendimentos
+      .filter(function(a){ return a.data_agendamento; })
+      .sort(function(a,b){ return (a.data_agendamento||'').localeCompare(b.data_agendamento||''); })
+      .slice(0, 15);
+
+    var agendHtml = '<div class="viz-grid full"><div class="viz-card">'
+      + '<div class="viz-card-head"><h3>Próximos Agendamentos</h3>'
+      + '<div class="cap">Próximos 15 agendados</div></div>'
+      + '<div class="vz-body">';
+
+    if(proximosAgend.length === 0){
+      agendHtml += '<div class="vz-empty">Nenhum agendamento cadastrado.</div>';
+    } else {
+      agendHtml += '<table class="vz-table"><thead><tr>'
+        + '<th>Data</th><th>Hora</th><th>Colaborador</th><th>Matrícula</th><th>Quem Atenderá</th><th>Status</th></tr></thead><tbody>';
+      proximosAgend.forEach(function(a){
+        var statusBg = statusAtendimentoBgColor(a.status);
+        agendHtml += '<tr>'
+          + '<td><strong>'+fmtDiaMes(parseDateISO(a.data_agendamento))+'</strong></td>'
+          + '<td>'+esc(a.horario_comparecimento||'—')+'</td>'
+          + '<td>'+esc(a.nome_colaborador||'—')+'</td>'
+          + '<td>'+esc(a.matricula||'—')+'</td>'
+          + '<td>'+esc(a.quem_atenderá||'—')+'</td>'
+          + '<td><span style="display:inline-block;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;background:'+statusBg+'">'+esc(a.status||'—')+'</span></td>'
+          + '</tr>';
+      });
+      agendHtml += '</tbody></table>';
+    }
+    agendHtml += '</div></div></div>';
+    html += agendHtml;
+
+    el.innerHTML = html;
+    attachAllTooltips(el);
+  }).catch(function(err){
+    el.innerHTML = '<div class="vz-empty" style="padding:60px 20px;">Erro ao carregar dados do dashboard: '+esc(err.message)+'</div>';
+    console.error('Dashboard atendimentos error:', err);
+  });
 }
 
 /* ================= INIT ================= */
