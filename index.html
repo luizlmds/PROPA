@@ -3404,6 +3404,12 @@ function csFiltroRangeChange(chave, limite, valor){
 function corStatusBadge(valor){
   var t = String(valor || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   if(!t) return null;
+  /* Controle de Afastados (Medicina Ocupacional) \u2014 status de benef\u00edcio */
+  if(/\bATIVO\b/.test(t)) return { bg:'#e7f6e2', fg:'#0d8a2e' };                    /* Verde */
+  if(/\bCESSADO\b/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };                   /* Vermelho */
+  if(/\bSUSPENSO\b/.test(t)) return { bg:'#fdf3e0', fg:'#c07a00' };                  /* Amarelo */
+  if(/\bPRORROGADO\b/.test(t)) return { bg:'#e0f2fe', fg:'#0369a1' };                /* Azul */
+  /* Jur\u00eddico \u2014 status de processos */
   if(/IMPROCEDENTE|INDEFERID|REJEITAD|NEGAD|CANCELAD/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };
   if(/PENDENTE|PEDENTE|ATRASAD|AGUARDANDO/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };
   if(/PARCIAL|ANALISE|REVISAO/.test(t)) return { bg:'#fdf3e0', fg:'#c07a00' };
