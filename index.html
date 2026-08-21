@@ -2463,6 +2463,11 @@ function loginEntrarComoUsuario(registro){
        pessoa no cadastro de Usuários. */
     ambientesPermitidos: Array.isArray(registro.ambientes_permitidos) ? registro.ambientes_permitidos : null
   };
+  // Salvar estado de login em localStorage
+  try {
+    localStorage.setItem('portal_usuario_logado', JSON.stringify(state.usuarioLogado));
+  } catch(e) { console.warn('localStorage não disponível:', e); }
+
   sbClient.from('usuarios').update({ ultimo_acesso: new Date().toISOString() }).eq('id', registro.id).then(function(){}, function(erro){
     console.error('Falha ao registrar último acesso (não bloqueia o login):', erro);
   });
@@ -2477,6 +2482,12 @@ function loginEntrarComoUsuario(registro){
 
 function logOff(){
   state.usuarioLogado = null;
+  // Limpar estado de login do localStorage
+  try {
+    localStorage.removeItem('portal_usuario_logado');
+    localStorage.removeItem('portal_ambiente_atual');
+    localStorage.removeItem('portal_rotina_atual');
+  } catch(e) { console.warn('localStorage não disponível:', e); }
   ambVoltar();
   $('view-ambiente').style.display = 'none';
   $('view-login').style.display = 'flex';
@@ -2534,6 +2545,10 @@ function selecionarAmbiente(codigo){
   state.ambiente = a;
   $('amb-ambiente').value = a.codigo+' - '+a.nome;
   $('amb-ambiente-desc').textContent = a.desc;
+  // Salvar ambiente selecionado em localStorage
+  try {
+    localStorage.setItem('portal_ambiente_atual', codigo);
+  } catch(e) { console.warn('localStorage não disponível:', e); }
   closeDlg('dlg-lookup-ambiente');
   $('amb-msg').style.display = 'none';
 }
@@ -2653,6 +2668,10 @@ var ROTINAS_PRONTAS = {
 function acionarRotina(chave){
   var fn = ROTINAS_PRONTAS[chave];
   if(fn && typeof window[fn] === 'function'){
+    // Salvar rotina atual em localStorage
+    try {
+      localStorage.setItem('portal_rotina_atual', chave);
+    } catch(e) { console.warn('localStorage não disponível:', e); }
     abaAtualizarParaRotina(chave);
     window[fn]();
   }
@@ -7412,6 +7431,47 @@ initImportDropzoneProcessosArquivados();
 initImportDropzoneMedidas();
 initImportDropzonePagamentos();
 initImportDropzonePericiasLocal();
+
+/* Restaurar estado persistido em localStorage (usuario logado, ambiente, rotina) */
+function restaurarEstadoDoLocalStorage(){
+  try {
+    var usuarioSalvo = localStorage.getItem('portal_usuario_logado');
+    var ambienteSalvo = localStorage.getItem('portal_ambiente_atual');
+    var rotinaSalva = localStorage.getItem('portal_rotina_atual');
+
+    if(usuarioSalvo){
+      try {
+        var usuarioObj = JSON.parse(usuarioSalvo);
+        state.usuarioLogado = usuarioObj;
+        $('view-login').style.display = 'none';
+        $('view-ambiente').style.display = 'flex';
+        dpCarregarDadosIniciais();
+
+        // Se também tem ambiente salvo, entra nele automaticamente
+        if(ambienteSalvo){
+          setTimeout(function(){
+            selecionarAmbiente(ambienteSalvo);
+            ambEntrar();
+
+            // Se tem rotina salva, abre ela também
+            if(rotinaSalva){
+              setTimeout(function(){
+                acionarRotina(rotinaSalva);
+              }, 500);
+            }
+          }, 500);
+        }
+      } catch(e) {
+        console.warn('Erro ao restaurar usuário:', e);
+      }
+    }
+  } catch(e) {
+    console.warn('localStorage não disponível:', e);
+  }
+}
+
+restaurarEstadoDoLocalStorage();
+
 /* dpCarregarDadosIniciais() só é chamada depois de um login bem-sucedido
    (ver loginEntrarComoUsuario) — antes, ela rodava aqui direto no carregamento
    da página, o que buscava CPF/RG/salário de todos os colaboradores pro
