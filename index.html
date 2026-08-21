@@ -6877,33 +6877,43 @@ async function aplicarImportacaoAfastadosInternal(ids){
   var linhas = state.importAfastadosPreview.map(medAfastadosParaLinha);
   var qtd = linhas.length;
 
+  /* Remover duplicatas dentro do próprio lote: para cada CPF, manter apenas o último registro.
+     Isso evita o erro "ON CONFLICT DO UPDATE command cannot affect row a second time" */
+  var mapCpf = {};
+  linhas.forEach(function(linha){
+    if(linha.cpf) mapCpf[linha.cpf] = linha;  /* sobrescreve = mantém o último */
+  });
+  var linhasUnicas = Object.keys(mapCpf).map(function(cpf){ return mapCpf[cpf]; });
+  var duplicatasRemovidas = linhas.length - linhasUnicas.length;
+
   state.importAfastadosPreview = [];
   $(ids.summary).style.display = 'none';
   $(ids.confirmBar).style.display = 'none';
   $(ids.table).style.display = 'none';
   $(ids.fname).textContent = '';
   $(ids.fileInput).value = '';
-  impAfastadosMsg(qtd+' afastado(s) importado(s) — salvando no Supabase agora… <a onclick="abrirAfastados()">Ver Afastados</a>', 'ok');
+
+  var msgExtra = duplicatasRemovidas > 0 ? ' ('+duplicatasRemovidas+' duplicata(s) removida(s))' : '';
+  impAfastadosMsg(linhasUnicas.length+' afastado(s) será(ão) salvo(s)'+msgExtra+' — salvando no Supabase agora… <a onclick="abrirAfastados()">Ver Afastados</a>', 'ok');
   toast(qtd+' afastado(s) importado(s). Salvando no Supabase…');
 
   var falhas = 0;
   var primeiroErro = null;
-  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
-    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+  /* Fazer upsert linha por linha para evitar conflito com duplicatas no mesmo lote */
+  for(var i = 0; i < linhasUnicas.length; i++){
     try{
-      /* Upsert: on conflict CPF, update. CPF é UNIQUE na tabela med_afastados */
-      var resp = await sbClient.from('med_afastados').upsert(lote, { onConflict: 'cpf' });
+      var resp = await sbClient.from('med_afastados').upsert([linhasUnicas[i]], { onConflict: 'cpf' });
       if(resp.error) throw resp.error;
     } catch(erro){
-      console.error(dpFormatarErroSupabase('Falha ao importar afastados (lote a partir da linha ' + i + ')', erro));
-      falhas += lote.length;
+      console.error(dpFormatarErroSupabase('Falha ao importar afastado linha ' + i, erro));
+      falhas++;
       if(!primeiroErro) primeiroErro = erro;
     }
   }
   if(!falhas){
-    toast(qtd + ' afastado(s) salvo(s) no Supabase (novos inseridos, existentes atualizados).');
+    toast(linhasUnicas.length + ' afastado(s) salvo(s) no Supabase (novos inseridos, existentes atualizados).'+msgExtra);
   } else {
-    toast(dpFormatarErroSupabase((qtd-falhas)+' afastado(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+    toast(dpFormatarErroSupabase((linhasUnicas.length-falhas)+' afastado(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
   }
 }
 
