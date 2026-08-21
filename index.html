@@ -1558,6 +1558,52 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
       </div>
 
+      <div id="view-importacao-afastados">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Medicina Ocupacional &gt; Controle de Afastados</div>
+            <h1>Importar Afastados</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+        <div class="imp-intro">
+          Selecione a planilha de afastados para importar. A primeira linha deve conter os cabeçalhos das colunas.
+          Registros com CPF duplicado serão <b>atualizados</b> (não duplicados). Formatos aceitos: <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b>.
+        </div>
+        <div class="imp-dropzone" id="impafastados-dropzone">
+          <div class="ico">&#128193;</div>
+          <div>Clique para selecionar a planilha, ou arraste o arquivo aqui</div>
+          <input type="file" id="impafastados-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFileAfastados(this.files[0])">
+          <button class="btn primary" style="margin-top:12px;" onclick="document.getElementById('impafastados-file-input').click()">Selecionar Planilha</button>
+          <div class="fname" id="impafastados-fname"></div>
+        </div>
+        <div class="func-msg" id="impafastados-msg"></div>
+        <div class="imp-summary" id="impafastados-summary" style="display:none;">
+          <div class="imp-stat"><div class="num" id="impafastados-stat-total">0</div><div class="lbl">Linhas na planilha</div></div>
+        </div>
+        <div class="routine-bar" id="impafastados-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
+          <div class="flex"></div>
+          <button class="btn" onclick="cancelarImportacaoAfastados()">Cancelar</button>
+          <button class="btn primary" onclick="confirmarImportacaoAfastados()">Confirmar Importação</button>
+        </div>
+        <div class="func-wrap">
+          <table class="func" id="impafastados-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>CPF</th>
+                <th>Nome</th>
+                <th>NIT</th>
+                <th>Situação Benefício</th>
+                <th>Data Início Benefício</th>
+                <th>Telefone</th>
+              </tr>
+            </thead>
+            <tbody id="impafastados-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== Rotina: Dashboards ===== -->
       <div id="view-dashboard">
         <div class="routine-bar">
@@ -1988,6 +2034,11 @@ var AMBIENTES = [
         itens: ['Exames (ASO)','Clínicas Credenciadas']
       },
       {
+        titulo: 'Controle de Afastados',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Controle de Afastados','Importar Afastados']
+      },
+      {
         titulo: 'Movimentações',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Agendamento de Exames','Afastamentos por CID']
@@ -2013,6 +2064,7 @@ var state = {
   importMedidasPreview: [], // idem, para a planilha de Importar Medidas Disciplinares
   importPagamentosPreview: [], // idem, para a planilha de Importar Pagamento
   importPericiasPreview: [], // idem, para a planilha de Importar Perícias
+  importAfastadosPreview: [], // idem, para a planilha de Importar Afastados (com upsert)
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -2662,7 +2714,9 @@ var ROTINAS_PRONTAS = {
   'Pagamentos::Importar Pagamento': 'abrirImportacaoPagamentos',
   'Controle de Perícias::Perícias': 'abrirPericias',
   'Controle de Perícias::Importar Perícias': 'abrirImportacaoPericias',
-  'Relatórios e Dashboards::Dashboards Jurídico': 'abrirDashboardJuridico'
+  'Relatórios e Dashboards::Dashboards Jurídico': 'abrirDashboardJuridico',
+  'Controle de Afastados::Controle de Afastados': 'abrirAfastados',
+  'Controle de Afastados::Importar Afastados': 'abrirImportacaoAfastados'
 };
 
 function acionarRotina(chave){
@@ -3127,6 +3181,43 @@ var CADASTROS_SIMPLES = {
       { chave:'resultado_pericia', label:'Resultado', tipo:'select' },
       { chave:'data', label:'Data', tipo:'daterange' }
     ]
+  },
+  med_afastados: {
+    ambiente: 'Medicina Ocupacional',
+    secao: 'Controle de Afastados',
+    titulo: 'Afastados',
+    tabela: 'med_afastados',
+    instrucao: 'Cadastre e acompanhe os colaboradores afastados — mesmos campos da planilha modelo, todos editáveis. Clique numa linha da tabela para editar tudo, ou mude dados direto na lista. Use "Importar Afastados" para trazer tudo direto da planilha — registros com CPF duplicado serão atualizados (não duplicados).',
+    campoBusca: ['cpf','nome'],
+    campos: [
+      { chave:'cpf', label:'CPF', tipo:'text', obrigatorio:true },
+      { chave:'cnpj', label:'CNPJ', tipo:'text' },
+      { chave:'especie', label:'Espécie', tipo:'text' },
+      { chave:'nome_especie', label:'Nome Espécie', tipo:'text' },
+      { chave:'nome', label:'Nome', tipo:'text' },
+      { chave:'nit', label:'NIT', tipo:'text' },
+      { chave:'data_nascimento', label:'Data Nascimento', tipo:'date' },
+      { chave:'numero_beneficio', label:'Nº Benefício', tipo:'text' },
+      { chave:'situacao_beneficio', label:'Situação Benefício', tipo:'text' },
+      { chave:'data_entrada_requerimento', label:'Data Entrada Requerimento', tipo:'date' },
+      { chave:'data_inicio_beneficio', label:'Data Início Benefício', tipo:'date' },
+      { chave:'data_despacho', label:'Data Despacho', tipo:'date' },
+      { chave:'data_pericia_medica', label:'Data Perícia Médica', tipo:'date' },
+      { chave:'conclusao_pericia', label:'Conclusão da Perícia', tipo:'text' },
+      { chave:'data_limite', label:'Data Limite', tipo:'date' },
+      { chave:'data_cessacao', label:'Data Cessação', tipo:'date' },
+      { chave:'nexo_tecnico', label:'Nexo Técnico', tipo:'text' },
+      { chave:'telefone', label:'Telefone para Contato', tipo:'text' },
+      { chave:'observacoes', label:'Observações', tipo:'textarea', largura:'full' }
+    ],
+    colunasTabela: ['cpf','nome','nit','situacao_beneficio','data_inicio_beneficio','data_limite','telefone'],
+    colunasStatusColorido: ['situacao_beneficio'],
+    filtrosColuna: [
+      { chave:'situacao_beneficio', label:'Situação Benefício', tipo:'select' },
+      { chave:'especie', label:'Espécie', tipo:'select' },
+      { chave:'data_inicio_beneficio', label:'Data Início', tipo:'daterange' },
+      { chave:'data_cessacao', label:'Data Cessação', tipo:'daterange' }
+    ]
   }
 };
 
@@ -3137,6 +3228,7 @@ function abrirPagamentosJuridico(){ abrirCadSimples('jur_pagamentos'); }
 function abrirPericias(){ abrirCadSimples('jur_pericias'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
+function abrirAfastados(){ abrirCadSimples('med_afastados'); }
 function abrirUsuarios(){
   /* Defesa extra: o item "Usuários" já nem aparece no menu/Início pra quem
      não é admin (ver ambienteFiltradoPorPermissao), mas essa checagem aqui
@@ -6595,6 +6687,199 @@ function confirmarImportacaoPericias(){ confirmarImportacaoPericiasInternal({ fn
 function cancelarImportacaoPericias(){ cancelarImportacaoPericiasInternal({ fname: 'imppericias-fname', msg: 'imppericias-msg', summary: 'imppericias-summary', confirmBar: 'imppericias-confirm-bar', table: 'imppericias-table', tbody: 'imppericias-tbody', fileInput: 'imppericias-file-input' }); }
 function initImportDropzonePericiasLocal(){ initImportDropzoneGenerico('imppericias-dropzone', handleImportFilePericias); }
 
+/* ===== AFASTADOS IMPORT (COM UPSERT) ===== */
+var COLUNA_MAP_AFASTADOS = {
+  'cnpj': 'cnpj',
+  'especie': 'especie',
+  'nome especie': 'nomeEspecie',
+  'nome': 'nome',
+  'cpf': 'cpf',
+  'nit': 'nit',
+  'dt nascimento': 'dataNascimento',
+  'n beneficio': 'numeroBeneficio',  /* ou "numero beneficio" */
+  'numero beneficio': 'numeroBeneficio',
+  'situacao beneficio': 'situacaoBeneficio',
+  'dt entrada requerimento': 'dataEntradaRequerimento',
+  'dt inicio beneficio': 'dataInicioBeneficio',
+  'dt despacho': 'dataDespacho',
+  'data pericia medica': 'dataPericiaMedica',
+  'conclusao da pericia': 'conclusaoPericia',
+  'dt limite': 'dataLimite',
+  'dt cessacao': 'dataCessacao',
+  'nexo tecnico': 'nexoTecnico'
+};
+var CAMPOS_DATA_AFASTADOS = ['dataNascimento','dataEntradaRequerimento','dataInicioBeneficio','dataDespacho','dataPericiaMedica','dataLimite','dataCessacao'];
+
+function mapRowToAfastados(rawRow){
+  var obj = {};
+  Object.keys(rawRow).forEach(function(h){
+    var campo = COLUNA_MAP_AFASTADOS[normalizeHeader(h)];
+    if(!campo) return;
+    var val = rawRow[h];
+    if(val === undefined || val === null || val === '') return;
+    if(val instanceof Date){ val = formatarDataCelula(val); }
+    else if(CAMPOS_DATA_AFASTADOS.indexOf(campo) !== -1){
+      if(val instanceof Date){ val = formatarDataCelula(val); }
+      else { val = String(val).trim(); }
+    }
+    else { val = String(val).trim(); }
+    obj[campo] = val;
+  });
+  return obj;
+}
+
+function medAfastadosParaLinha(a){
+  return {
+    cpf: a.cpf || null,
+    cnpj: a.cnpj || null,
+    especie: a.especie || null,
+    nome_especie: a.nomeEspecie || null,
+    nome: a.nome || null,
+    nit: a.nit || null,
+    data_nascimento: dataBRParaISO(a.dataNascimento),
+    numero_beneficio: a.numeroBeneficio || null,
+    situacao_beneficio: a.situacaoBeneficio || null,
+    data_entrada_requerimento: dataBRParaISO(a.dataEntradaRequerimento),
+    data_inicio_beneficio: dataBRParaISO(a.dataInicioBeneficio),
+    data_despacho: dataBRParaISO(a.dataDespacho),
+    data_pericia_medica: dataBRParaISO(a.dataPericiaMedica),
+    conclusao_pericia: a.conclusaoPericia || null,
+    data_limite: dataBRParaISO(a.dataLimite),
+    data_cessacao: dataBRParaISO(a.dataCessacao),
+    nexo_tecnico: a.nexoTecnico || null
+  };
+}
+
+function handleImportFileAfastadosInternal(file, ids){
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    impAfastadosMsg('A biblioteca de leitura de planilhas ainda não carregou. Aguarde alguns segundos e tente novamente.', 'err');
+    return;
+  }
+  $(ids.fname).textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', cellDates: true });
+      var sheet = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      processarLinhasImportacaoAfastadosInternal(rows, ids);
+    }catch(err){
+      impAfastadosMsg('Não foi possível ler o arquivo. Confira se é uma planilha válida (.xlsx, .xls ou .csv). Detalhe: '+esc(err.message), 'err');
+    }
+  };
+  reader.onerror = function(){ impAfastadosMsg('Erro ao ler o arquivo selecionado.', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleImportFileAfastados(file){
+  var ids = { fname: 'impafastados-fname', msg: 'impafastados-msg', stat: 'impafastados-stat-total', summary: 'impafastados-summary', confirmBar: 'impafastados-confirm-bar', table: 'impafastados-table', tbody: 'impafastados-tbody', fileInput: 'impafastados-file-input' };
+  handleImportFileAfastadosInternal(file, ids);
+}
+
+function impAfastadosMsg(texto, tipo){
+  var el = $('impafastados-msg'); el.className = 'func-msg ' + (tipo||'info'); el.innerHTML = texto;
+}
+function impAfastadosMsgClear(){ var el = $('impafastados-msg'); el.className = 'func-msg'; el.innerHTML = ''; }
+
+function processarLinhasImportacaoAfastadosInternal(rows, ids){
+  impAfastadosMsgClear();
+  if(!rows.length){
+    impAfastadosMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
+    return;
+  }
+  var mapeados = [];
+  rows.forEach(function(r){
+    var a = mapRowToAfastados(r);
+    if(!Object.keys(a).length) return;
+    if(!a.cpf) return;  /* CPF é obrigatório (chave de upsert) */
+    mapeados.push(a);
+  });
+  if(!mapeados.length){
+    impAfastadosMsg('Nenhuma linha com CPF foi encontrada na planilha. Confira se a primeira linha contém os cabeçalhos esperados e se há CPFs preenchidos.', 'err');
+    $(ids.summary).style.display = 'none';
+    $(ids.confirmBar).style.display = 'none';
+    $(ids.table).style.display = 'none';
+    return;
+  }
+
+  state.importAfastadosPreview = mapeados;
+  $(ids.stat).textContent = rows.length;
+  $(ids.summary).style.display = 'flex';
+  $(ids.confirmBar).style.display = 'flex';
+  renderImportAfastadosPreviewTable(mapeados, ids);
+  impAfastadosMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — registros com CPF duplicado serão atualizados (não duplicados). Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+}
+
+function renderImportAfastadosPreviewTable(lista, ids){
+  $(ids.table).style.display = 'table';
+  $(ids.tbody).innerHTML = lista.map(function(a){
+    return '<tr>'
+      + '<td>'+esc(a.cpf)+'</td>'
+      + '<td>'+esc(a.nome)+'</td>'
+      + '<td>'+esc(a.nit)+'</td>'
+      + '<td>'+esc(a.situacaoBeneficio)+'</td>'
+      + '<td>'+esc(a.dataInicioBeneficio)+'</td>'
+      + '<td>'+esc('Telefone adicionado na edição')+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function confirmarImportacaoAfastadosInternal(ids){
+  if(!state.importAfastadosPreview.length) return;
+  aplicarImportacaoAfastadosInternal(ids);
+}
+
+async function aplicarImportacaoAfastadosInternal(ids){
+  if(!state.importAfastadosPreview.length) return;
+  var linhas = state.importAfastadosPreview.map(medAfastadosParaLinha);
+  var qtd = linhas.length;
+
+  state.importAfastadosPreview = [];
+  $(ids.summary).style.display = 'none';
+  $(ids.confirmBar).style.display = 'none';
+  $(ids.table).style.display = 'none';
+  $(ids.fname).textContent = '';
+  $(ids.fileInput).value = '';
+  impAfastadosMsg(qtd+' afastado(s) importado(s) — salvando no Supabase agora… <a onclick="abrirAfastados()">Ver Afastados</a>', 'ok');
+  toast(qtd+' afastado(s) importado(s). Salvando no Supabase…');
+
+  var falhas = 0;
+  var primeiroErro = null;
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      /* Upsert: on conflict CPF, update. CPF é UNIQUE na tabela med_afastados */
+      var resp = await sbClient.from('med_afastados').upsert(lote, { onConflict: 'cpf' });
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao importar afastados (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas){
+    toast(qtd + ' afastado(s) salvo(s) no Supabase (novos inseridos, existentes atualizados).');
+  } else {
+    toast(dpFormatarErroSupabase((qtd-falhas)+' afastado(s) salvo(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+  }
+}
+
+function cancelarImportacaoAfastadosInternal(ids){
+  state.importAfastadosPreview = [];
+  $(ids.summary).style.display = 'none';
+  $(ids.confirmBar).style.display = 'none';
+  $(ids.table).style.display = 'none';
+  $(ids.fname).textContent = '';
+  $(ids.fileInput).value = '';
+  impAfastadosMsgClear();
+}
+
+function confirmarImportacaoAfastados(){ confirmarImportacaoAfastadosInternal({ fname: 'impafastados-fname', msg: 'impafastados-msg', summary: 'impafastados-summary', confirmBar: 'impafastados-confirm-bar', table: 'impafastados-table', tbody: 'impafastados-tbody', fileInput: 'impafastados-file-input' }); }
+function cancelarImportacaoAfastados(){ cancelarImportacaoAfastadosInternal({ fname: 'impafastados-fname', msg: 'impafastados-msg', summary: 'impafastados-summary', confirmBar: 'impafastados-confirm-bar', table: 'impafastados-table', tbody: 'impafastados-tbody', fileInput: 'impafastados-file-input' }); }
+function initImportDropzoneAfastadosLocal(){ initImportDropzoneGenerico('impafastados-dropzone', handleImportFileAfastados); }
+
 function abrirImportacaoPagamentos(){
   $('view-home').style.display = 'none';
   $('view-funcionarios').style.display = 'none';
@@ -6624,6 +6909,23 @@ function abrirImportacaoPericias(){
   $('view-importacao-medidas').style.display = 'none';
   $('view-importacao-pagamentos').style.display = 'none';
   $('view-importacao-pericias').style.display = 'flex';
+}
+
+function abrirImportacaoAfastados(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
+  $('view-importacao-pericias').style.display = 'none';
+  $('view-importacao-afastados').style.display = 'flex';
 }
 
 /* Liga o drag-and-drop de uma zona de importação genérica (usado tanto pela
@@ -7430,6 +7732,7 @@ initImportDropzoneProcessosArquivados();
 initImportDropzoneMedidas();
 initImportDropzonePagamentos();
 initImportDropzonePericiasLocal();
+initImportDropzoneAfastadosLocal();
 
 /* Restaurar estado persistido em localStorage (usuario logado, ambiente, rotina) */
 function restaurarEstadoDoLocalStorage(){
