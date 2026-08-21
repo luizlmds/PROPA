@@ -634,6 +634,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   /* ===== Rotina: Importar Pagamento (Jurídico > Pagamentos) —
      mesma ideia, planilha e colunas diferentes. ===== */
   #view-importacao-pagamentos{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  #view-importacao-pericias{display:none;flex-direction:column;flex:1;overflow:hidden;}
   .imp-intro{margin:0 14px 12px;font-size:12.5px;color:#666;max-width:900px;}
   .imp-intro b{color:#444;}
   .imp-dropzone{
@@ -1508,6 +1509,55 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         </div>
       </div>
 
+      <div id="view-importacao-pericias">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Jurídico &gt; Controle de Perícias</div>
+            <h1>Importar Perícias</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+        <div class="imp-intro">
+          Selecione a planilha de perícias para importar. A primeira linha deve conter os cabeçalhos das colunas.
+          Cada linha da planilha vira um registro próprio em <b>Perícias</b> — a importação não mescla nem substitui
+          perícias já cadastradas. Formatos aceitos: <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b>.
+        </div>
+        <div class="imp-dropzone" id="imppericias-dropzone">
+          <div class="ico">&#128193;</div>
+          <div>Clique para selecionar a planilha, ou arraste o arquivo aqui</div>
+          <input type="file" id="imppericias-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFilePericias(this.files[0])">
+          <button class="btn primary" style="margin-top:12px;" onclick="document.getElementById('imppericias-file-input').click()">Selecionar Planilha</button>
+          <div class="fname" id="imppericias-fname"></div>
+        </div>
+        <div class="func-msg" id="imppericias-msg"></div>
+        <div class="imp-summary" id="imppericias-summary" style="display:none;">
+          <div class="imp-stat"><div class="num" id="imppericias-stat-total">0</div><div class="lbl">Linhas na planilha</div></div>
+        </div>
+        <div class="routine-bar" id="imppericias-confirm-bar" style="display:none;border-top:1px solid #e3e3e3;border-bottom:0;">
+          <div class="flex"></div>
+          <button class="btn" onclick="cancelarImportacaoPericias()">Cancelar</button>
+          <button class="btn primary" onclick="confirmarImportacaoPericias()">Confirmar Importação</button>
+        </div>
+        <div class="func-wrap">
+          <table class="func" id="imppericias-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>Processo</th>
+                <th>Autor</th>
+                <th>Tipo de Perícia</th>
+                <th>Modo</th>
+                <th>Perito</th>
+                <th>Status Realização</th>
+                <th>Resultado</th>
+                <th>Laudos</th>
+              </tr>
+            </thead>
+            <tbody id="imppericias-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== Rotina: Dashboards ===== -->
       <div id="view-dashboard">
         <div class="routine-bar">
@@ -1867,6 +1917,11 @@ var AMBIENTES = [
         itens: ['Pagamentos','Importar Pagamento']
       },
       {
+        titulo: 'Controle de Perícias',
+        sub: 'Selecione a rotina na lista abaixo',
+        itens: ['Perícias','Importar Perícias']
+      },
+      {
         titulo: 'Movimentações',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Andamentos Processuais','Audiências e Prazos']
@@ -1957,6 +2012,7 @@ var state = {
   importProcessosArquivadosPreview: [], // idem, para a planilha de Processos Arquivados
   importMedidasPreview: [], // idem, para a planilha de Importar Medidas Disciplinares
   importPagamentosPreview: [], // idem, para a planilha de Importar Pagamento
+  importPericiasPreview: [], // idem, para a planilha de Importar Perícias
   pagamentosRealizados: {}, // chave "tipo|data" -> true, quando o pagamento daquela solicitação já ocorreu
   checklistsDemissionais: {}, // chave = matrícula -> registro do dp_checklist_demissional (ver rotina Rescisão)
   abas: [],             // abas internas abertas (estilo TOTVS) — ver "ABAS" mais abaixo
@@ -2588,7 +2644,9 @@ var ROTINAS_PRONTAS = {
   'Medidas Disciplinares::Medidas Disciplinares': 'abrirMedidasDisciplinares',
   'Medidas Disciplinares::Importar Medidas Disciplinares': 'abrirImportacaoMedidasDisciplinares',
   'Pagamentos::Pagamentos': 'abrirPagamentosJuridico',
-  'Pagamentos::Importar Pagamento': 'abrirImportacaoPagamentos'
+  'Pagamentos::Importar Pagamento': 'abrirImportacaoPagamentos',
+  'Controle de Perícias::Perícias': 'abrirPericias',
+  'Controle de Perícias::Importar Perícias': 'abrirImportacaoPericias'
 };
 
 function acionarRotina(chave){
@@ -2647,6 +2705,7 @@ function voltarHome(){
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
   $('view-importacao-pagamentos').style.display = 'none';
+  $('view-importacao-pericias').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-home').style.display = 'block';
@@ -3005,6 +3064,49 @@ var CADASTROS_SIMPLES = {
       { chave:'data_pagamento', label:'Data de Pagamento', tipo:'daterange' },
       { chave:'valor', label:'Valor', tipo:'numrange' }
     ]
+  },
+  jur_pericias: {
+    ambiente: 'Jurídico',
+    secao: 'Controle de Perícias',
+    titulo: 'Perícias',
+    tabela: 'jur_pericias',
+    instrucao: 'Cadastre e acompanhe as perícias vinculadas a processos — mesmos campos da planilha modelo, todos editáveis. Clique numa linha da tabela para editar tudo, ou mude Status de Realização/Resultado direto na lista usando as listas suspensas dessas colunas. Use "Importar Perícias" para trazer tudo direto da planilha.',
+    campoBusca: ['numero_processo','autor'],
+    campos: [
+      { chave:'qtd', label:'QTD', tipo:'inteiro' },
+      { chave:'numero_processo', label:'Processo', tipo:'text', obrigatorio:true },
+      { chave:'autor', label:'Autor', tipo:'text' },
+      { chave:'tipo_pericia', label:'Tipo de Perícia', tipo:'text' },
+      { chave:'dias_quesitos_ass_tec', label:'Dias Quesitos/Ass.Tec.', tipo:'inteiro' },
+      { chave:'causa_pedir', label:'Causa de Pedir', tipo:'text' },
+      { chave:'data', label:'Data', tipo:'date' },
+      { chave:'modo', label:'Modo', tipo:'text' },
+      { chave:'local', label:'Local', tipo:'textarea', largura:'full' },
+      { chave:'perito', label:'Perito', tipo:'text' },
+      { chave:'assistente_tecnico', label:'Assistente Técnico', tipo:'text' },
+      { chave:'realizado_pericia', label:'Status Realização', tipo:'text' },
+      { chave:'responsavel_quesitos', label:'Responsável Quesitos', tipo:'text' },
+      { chave:'responsavel_manifestacao', label:'Responsável Manifestação', tipo:'text' },
+      { chave:'resultado_laudo_data', label:'Resultado Laudo Data', tipo:'date' },
+      { chave:'prazo_manifestacao_laudo', label:'Prazo Manifestação', tipo:'text' },
+      { chave:'resultado_pericia', label:'Resultado Perícia', tipo:'text' },
+      { chave:'justificativa_resultado', label:'Justificativa', tipo:'textarea', largura:'full' },
+      { chave:'laudos', label:'Laudos', tipo:'text' }
+    ],
+    colunasTabela: ['numero_processo','autor','tipo_pericia','modo','perito','realizado_pericia','resultado_pericia','laudos'],
+    colunasInlineSelect: {
+      realizado_pericia: ['PENDENTE','REALIZADO'],
+      resultado_pericia: ['IMPROCEDENTE P/AUTOR','PROCEDENTE P/AUTOR','IMPROCEDENTE P/RÉU','PROCEDENTE P/RÉU','PARCIALMENTE PROCEDENTE']
+    },
+    colunasStatusColorido: ['realizado_pericia','resultado_pericia'],
+    filtrosColuna: [
+      { chave:'tipo_pericia', label:'Tipo de Perícia', tipo:'select' },
+      { chave:'modo', label:'Modo', tipo:'select' },
+      { chave:'perito', label:'Perito', tipo:'select' },
+      { chave:'realizado_pericia', label:'Status Realização', tipo:'select' },
+      { chave:'resultado_pericia', label:'Resultado', tipo:'select' },
+      { chave:'data', label:'Data', tipo:'daterange' }
+    ]
   }
 };
 
@@ -3012,6 +3114,7 @@ function abrirProcessosJuridico(){ abrirCadSimples('jur_processos'); }
 function abrirProcessosArquivados(){ abrirCadSimples('jur_processos_arquivados'); }
 function abrirMedidasDisciplinares(){ abrirCadSimples('medidas_disciplinares'); }
 function abrirPagamentosJuridico(){ abrirCadSimples('jur_pagamentos'); }
+function abrirPericias(){ abrirCadSimples('jur_pericias'); }
 function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirUsuarios(){
@@ -3049,6 +3152,7 @@ function abrirCadSimples(chave){
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
   $('view-importacao-pagamentos').style.display = 'none';
+  $('view-importacao-pericias').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
   $('view-cad-simples').style.display = 'flex';
@@ -6096,6 +6200,79 @@ function jurPagamentoParaLinha(p){
   };
 }
 
+/* ===== PERÍCIAS IMPORT ===== */
+var COLUNA_MAP_PERICIAS = {
+  'qtd': 'qtd',
+  'processo': 'numeroProcesso',
+  'autor': 'autor',
+  'tipo de pericia': 'tipoPericia',  /* nota: sem acento no "pericia" pq o normalizeHeader remove */
+  'p/ para apresentar quesitos e ass tec': 'diasQuesitosAssTec',
+  'causa de pedir': 'causaPedir',
+  'data': 'data',
+  'online/presencial': 'modo',
+  'local': 'local',
+  'perito': 'perito',
+  'assistente tecnico': 'assistenteTecnico',  /* sem acento */
+  'realizado a perica': 'realizadoPericia',  /* typo na planilha original */
+  'responsavel pelos quesitos': 'responsavelQuesitos',  /* sem acento */
+  'responsavel pela manifestacao': 'responsavelManifestacao',  /* sem acento */
+  'resultado do laudo data': 'resultadoLaudoData',
+  'prazo p manifestacao do laudo': 'prazoManifestacaoLaudo',  /* sem acento */
+  'resultado da perica': 'resultadoPericia',  /* typo na planilha original */
+  'justificatia de resultado': 'justificativaResultado',  /* typo na planilha "justificatia" */
+  'laudos': 'laudos'
+};
+var CAMPOS_DATA_PERICIAS = ['data', 'resultadoLaudoData'];
+var CAMPOS_NUMERO_PERICIAS = ['qtd', 'diasQuesitosAssTec'];
+
+function mapRowToPericias(rawRow){
+  var obj = {};
+  Object.keys(rawRow).forEach(function(h){
+    var campo = COLUNA_MAP_PERICIAS[normalizeHeader(h)];
+    if(!campo) return;
+    var val = rawRow[h];
+    if(val === undefined || val === null || val === '') return;
+    /* Datas ficam em formato ISO (YYYY-MM-DD); campos numéricos viram números */
+    if(val instanceof Date){ val = formatarDataCelula(val); }
+    else if(CAMPOS_DATA_PERICIAS.indexOf(campo) !== -1){
+      if(val instanceof Date){ val = formatarDataCelula(val); }
+      else { val = String(val).trim(); }
+    }
+    else if(CAMPOS_NUMERO_PERICIAS.indexOf(campo) !== -1){
+      var num = valorParaFloatFlexivel(val);
+      if(num === null) return;
+      val = num;
+    }
+    else { val = String(val).trim(); }
+    obj[campo] = val;
+  });
+  return obj;
+}
+
+function jurPericiasParaLinha(p){
+  return {
+    qtd: (p.qtd === undefined || p.qtd === null) ? null : p.qtd,
+    numero_processo: p.numeroProcesso || null,
+    autor: p.autor || null,
+    tipo_pericia: p.tipoPericia || null,
+    dias_quesitos_ass_tec: (p.diasQuesitosAssTec === undefined || p.diasQuesitosAssTec === null) ? null : p.diasQuesitosAssTec,
+    causa_pedir: p.causaPedir || null,
+    data: dataBRParaISO(p.data),
+    modo: p.modo || null,
+    local: p.local || null,
+    perito: p.perito || null,
+    assistente_tecnico: p.assistenteTecnico || null,
+    realizado_pericia: p.realizadoPericia || null,
+    responsavel_quesitos: p.responsavelQuesitos || null,
+    responsavel_manifestacao: p.responsavelManifestacao || null,
+    resultado_laudo_data: dataBRParaISO(p.resultadoLaudoData),
+    prazo_manifestacao_laudo: p.prazoManifestacaoLaudo || null,
+    resultado_pericia: p.resultadoPericia || null,
+    justificativa_resultado: p.justificativaResultado || null,
+    laudos: p.laudos || null
+  };
+}
+
 function handleImportFilePagamentos(file){
   if(!file) return;
   if(typeof XLSX === 'undefined'){
@@ -6226,6 +6403,138 @@ function cancelarImportacaoPagamentos(){
   impgMsgClear();
 }
 
+/* ===== PERÍCIAS IMPORT ===== */
+function handleImportFilePericiasInternal(file, ids){
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    impPericiasMsg('A biblioteca de leitura de planilhas ainda não carregou. Aguarde alguns segundos e tente novamente.', 'err');
+    return;
+  }
+  $(ids.fname).textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', cellDates: true });
+      var sheet = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      processarLinhasImportacaoPericiasInternal(rows, ids);
+    }catch(err){
+      impPericiasMsg('Não foi possível ler o arquivo. Confira se é uma planilha válida (.xlsx, .xls ou .csv). Detalhe: '+esc(err.message), 'err');
+    }
+  };
+  reader.onerror = function(){ impPericiasMsg('Erro ao ler o arquivo selecionado.', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleImportFilePericias(file){
+  var ids = { fname: 'imppericias-fname', msg: 'imppericias-msg', stat: 'imppericias-stat-total', summary: 'imppericias-summary', confirmBar: 'imppericias-confirm-bar', table: 'imppericias-table', tbody: 'imppericias-tbody', fileInput: 'imppericias-file-input' };
+  handleImportFilePericiasInternal(file, ids);
+}
+
+function impPericiasMsg(texto, tipo){
+  var el = $('imppericias-msg'); el.className = 'func-msg ' + (tipo||'info'); el.innerHTML = texto;
+}
+function impPericicasMsgClear(){ var el = $('imppericias-msg'); el.className = 'func-msg'; el.innerHTML = ''; }
+
+function processarLinhasImportacaoPericiasInternal(rows, ids){
+  impPericicasMsgClear();
+  if(!rows.length){
+    impPericiasMsg('A planilha não tem linhas de dados (ou a primeira linha não foi reconhecida como cabeçalho).', 'err');
+    return;
+  }
+  var mapeados = [];
+  rows.forEach(function(r){
+    var p = mapRowToPericias(r);
+    if(!Object.keys(p).length) return;
+    mapeados.push(p);
+  });
+  if(!mapeados.length){
+    impPericiasMsg('Nenhuma coluna foi reconhecida na planilha. Confira se a primeira linha contém os cabeçalhos esperados.', 'err');
+    $(ids.summary).style.display = 'none';
+    $(ids.confirmBar).style.display = 'none';
+    $(ids.table).style.display = 'none';
+    return;
+  }
+  var semProcesso = mapeados.filter(function(p){ return !p.numeroProcesso || p.numeroProcesso === '0'; }).length;
+
+  state.importPericiasPreview = mapeados;
+  $(ids.stat).textContent = rows.length;
+  $(ids.summary).style.display = 'flex';
+  $(ids.confirmBar).style.display = 'flex';
+  renderImportPericiasPreviewTable(mapeados, ids);
+  impPericiasMsg(mapeados.length + ' linha(s) reconhecida(s) e prontas para importar — cada uma vira um registro próprio em Perícias. Revise abaixo e clique em <b>Confirmar Importação</b>.', 'info');
+}
+
+function renderImportPericiasPreviewTable(lista, ids){
+  $(ids.table).style.display = 'table';
+  $(ids.tbody).innerHTML = lista.map(function(p){
+    return '<tr>'
+      + '<td>'+esc(p.numeroProcesso)+'</td>'
+      + '<td>'+esc(p.autor)+'</td>'
+      + '<td>'+esc(p.tipoPericia)+'</td>'
+      + '<td>'+esc(p.modo)+'</td>'
+      + '<td>'+esc(p.perito)+'</td>'
+      + '<td>'+esc(p.realizadoPericia)+'</td>'
+      + '<td>'+esc(p.resultadoPericia)+'</td>'
+      + '<td>'+esc(p.laudos)+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function confirmarImportacaoPericiasInternal(ids){
+  if(!state.importPericiasPreview.length) return;
+  aplicarImportacaoPericiasInternal(ids);
+}
+
+async function aplicarImportacaoPericiasInternal(ids){
+  if(!state.importPericiasPreview.length) return;
+  var linhas = state.importPericiasPreview.map(jurPericiasParaLinha);
+  var qtd = linhas.length;
+
+  state.importPericiasPreview = [];
+  $(ids.summary).style.display = 'none';
+  $(ids.confirmBar).style.display = 'none';
+  $(ids.table).style.display = 'none';
+  $(ids.fname).textContent = '';
+  $(ids.fileInput).value = '';
+  impPericiasMsg(qtd+' perícia(s) importada(s) — salvando no Supabase agora… <a onclick="abrirPericias()">Ver Perícias</a>', 'ok');
+  toast(qtd+' perícia(s) importada(s). Salvando no Supabase…');
+
+  var falhas = 0;
+  var primeiroErro = null;
+  for(var i = 0; i < linhas.length; i += DP_IMPORT_LOTE){
+    var lote = linhas.slice(i, i + DP_IMPORT_LOTE);
+    try{
+      var resp = await sbClient.from('jur_pericias').insert(lote);
+      if(resp.error) throw resp.error;
+    } catch(erro){
+      console.error(dpFormatarErroSupabase('Falha ao importar perícias (lote a partir da linha ' + i + ')', erro));
+      falhas += lote.length;
+      if(!primeiroErro) primeiroErro = erro;
+    }
+  }
+  if(!falhas){
+    toast(qtd + ' perícia(s) salva(s) no Supabase.');
+  } else {
+    toast(dpFormatarErroSupabase((qtd-falhas)+' perícia(s) salva(s), mas '+falhas+' falharam', primeiroErro), true, 12000);
+  }
+}
+
+function cancelarImportacaoPericiasInternal(ids){
+  state.importPericiasPreview = [];
+  $(ids.summary).style.display = 'none';
+  $(ids.confirmBar).style.display = 'none';
+  $(ids.table).style.display = 'none';
+  $(ids.fname).textContent = '';
+  $(ids.fileInput).value = '';
+  impPericicasMsgClear();
+}
+
+function confirmarImportacaoPericias(){ confirmarImportacaoPericiasInternal({ fname: 'imppericias-fname', msg: 'imppericias-msg', summary: 'imppericias-summary', confirmBar: 'imppericias-confirm-bar', table: 'imppericias-table', tbody: 'imppericias-tbody', fileInput: 'imppericias-file-input' }); }
+function cancelarImportacaoPericias(){ cancelarImportacaoPericiasInternal({ fname: 'imppericias-fname', msg: 'imppericias-msg', summary: 'imppericias-summary', confirmBar: 'imppericias-confirm-bar', table: 'imppericias-table', tbody: 'imppericias-tbody', fileInput: 'imppericias-file-input' }); }
+function initImportDropzonePericiasLocal(){ initImportDropzoneGenerico('imppericias-dropzone', handleImportFilePericias); }
+
 function abrirImportacaoPagamentos(){
   $('view-home').style.display = 'none';
   $('view-funcionarios').style.display = 'none';
@@ -6239,6 +6548,22 @@ function abrirImportacaoPagamentos(){
   $('view-importacao-processos-arquivados').style.display = 'none';
   $('view-importacao-medidas').style.display = 'none';
   $('view-importacao-pagamentos').style.display = 'flex';
+}
+
+function abrirImportacaoPericias(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
+  $('view-importacao-pericias').style.display = 'flex';
 }
 
 /* Liga o drag-and-drop de uma zona de importação genérica (usado tanto pela
@@ -6880,6 +7205,7 @@ initImportDropzoneProcessos();
 initImportDropzoneProcessosArquivados();
 initImportDropzoneMedidas();
 initImportDropzonePagamentos();
+initImportDropzonePericiasLocal();
 /* dpCarregarDadosIniciais() só é chamada depois de um login bem-sucedido
    (ver loginEntrarComoUsuario) — antes, ela rodava aqui direto no carregamento
    da página, o que buscava CPF/RG/salário de todos os colaboradores pro
