@@ -3521,12 +3521,13 @@ function csFiltroRangeChange(chave, limite, valor){
    resultado bom ou ruim (ex.: "Financeiro", "Arquivado"). */
 function corStatusBadge(valor){
   var t = String(valor || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-  if(!t) return null;
+  var original = String(valor || '').toUpperCase().trim();
+  if(!t && !original) return null;
   /* Recep\u00e7\u00e3o \u2014 status de agendamentos */
   if(/\bAGENDADO\b/.test(t)) return { bg:'#e0f2fe', fg:'#0369a1' };                  /* Azul */
+  if(/NAO\s+COMPARECEU|N\u00c3O\s+COMPARECEU/.test(t) || /N\u00c3O\s+COMPARECEU/.test(original)) return { bg:'#fde8e8', fg:'#d03b3b' };                /* Vermelho */
   if(/\bCOMPARECEU\b/.test(t)) return { bg:'#e7f6e2', fg:'#0d8a2e' };                /* Verde */
-  if(/NAO COMPARECEU/.test(t)) return { bg:'#fdf3e0', fg:'#c07a00' };                /* Laranja */
-  if(/\bCANCELADO\b/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };                 /* Vermelho */
+  if(/\bCANCELADO\b/.test(t)) return { bg:'#f0f0f0', fg:'#7a7a7a' };                 /* Cinza */
   /* Controle de Afastados (Medicina Ocupacional) \u2014 status de benef\u00edcio */
   if(/\bATIVO\b/.test(t)) return { bg:'#e7f6e2', fg:'#0d8a2e' };                    /* Verde */
   if(/\bCESSADO\b/.test(t)) return { bg:'#fdecea', fg:'#d03b3b' };                   /* Vermelho */
@@ -8500,8 +8501,8 @@ function statusAtendimentoBgColor(status){
   switch(String(status||'').toUpperCase()){
     case 'AGENDADO': return '#e0f2fe';                 // Azul
     case 'COMPARECEU': return '#e7f6e2';               // Verde
-    case 'NÃO COMPARECEU': return '#fdf3e0';           // Laranja
-    case 'CANCELADO': return '#fdecea';                // Vermelho
+    case 'NÃO COMPARECEU': return '#fde8e8';           // Vermelho claro
+    case 'CANCELADO': return '#f0f0f0';                // Cinza
     default: return '#eceef0';                         // Cinza
   }
 }
@@ -8510,8 +8511,8 @@ function statusAtendimentoCorGrafico(status){
   switch(String(status||'').toUpperCase()){
     case 'AGENDADO': return '#0369a1';                 // Azul escuro
     case 'COMPARECEU': return '#0d8a2e';               // Verde escuro
-    case 'NÃO COMPARECEU': return '#c07a00';           // Laranja escuro
-    case 'CANCELADO': return '#d03b3b';                // Vermelho escuro
+    case 'NÃO COMPARECEU': return '#d03b3b';           // Vermelho escuro
+    case 'CANCELADO': return '#7a7a7a';                // Cinza escuro
     default: return '#5a6570';                         // Cinza escuro
   }
 }
