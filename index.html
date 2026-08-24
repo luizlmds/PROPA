@@ -3318,9 +3318,9 @@ var CADASTROS_SIMPLES = {
     instrucao: 'Cadastre agendamentos de atendimentos com colaboradores. Busque o colaborador pelo nome, preencha os dados e selecione o atendente e horário. Clique numa linha para editar.',
     campoBusca: ['nome_colaborador','matricula'],
     campos: [
-      { chave:'nome_colaborador', label:'Nome do Colaborador', tipo:'text', obrigatorio:true },
+      { chave:'nome_colaborador', label:'Nome do Colaborador', tipo:'lookup-colaborador', obrigatorio:true, preencheAutomatico:{matricula:'matricula', funcao:'funcao'} },
       { chave:'matricula', label:'Matrícula', tipo:'text', obrigatorio:true, readonly:true },
-      { chave:'funcao', label:'Função', tipo:'text' },
+      { chave:'funcao', label:'Função', tipo:'text', readonly:true },
       { chave:'nao_admitido', label:'Não Admitido', tipo:'checkbox' },
       { chave:'quem_atenderá', label:'Quem Atenderá?', tipo:'select', obrigatorio:true, fonte:'rec_atendentes', campoFonte:'nome', filtroFonte:{ativo:true} },
       { chave:'data_agendamento', label:'Data do Agendamento', tipo:'date', obrigatorio:true },
@@ -3960,19 +3960,42 @@ function csInicializarCamposEspeciais(cfg){
               var fieldNome = $('cs-f-nome_colaborador');
               var fieldFuncao = $('cs-f-funcao');
               var fieldMatricula = $('cs-f-matricula');
+              var btnLupaNome = fieldNome ? fieldNome.parentElement.querySelector('.cs-lookup-btn') : null;
 
               if(isChecked){
                 /* Quando "Não Admitido" está marcado */
-                if(fieldNome) fieldNome.removeAttribute('readonly');
-                if(fieldFuncao) fieldFuncao.removeAttribute('readonly');
+                if(fieldNome){
+                  fieldNome.removeAttribute('readonly');
+                  fieldNome.style.opacity = '1';
+                }
+                if(fieldFuncao){
+                  fieldFuncao.removeAttribute('readonly');
+                  fieldFuncao.style.opacity = '1';
+                }
+                if(btnLupaNome){
+                  btnLupaNome.disabled = true;
+                  btnLupaNome.style.opacity = '0.5';
+                  btnLupaNome.style.cursor = 'not-allowed';
+                }
                 if(fieldMatricula){
                   fieldMatricula.value = 'N/A';
                   fieldMatricula.setAttribute('readonly', 'readonly');
                 }
               } else {
                 /* Quando "Não Admitido" está desmarcado */
-                if(fieldNome) fieldNome.setAttribute('readonly', 'readonly');
-                if(fieldFuncao) fieldFuncao.setAttribute('readonly', 'readonly');
+                if(fieldNome){
+                  fieldNome.setAttribute('readonly', 'readonly');
+                  fieldNome.style.opacity = '1';
+                }
+                if(fieldFuncao){
+                  fieldFuncao.setAttribute('readonly', 'readonly');
+                  fieldFuncao.style.opacity = '0.6';
+                }
+                if(btnLupaNome){
+                  btnLupaNome.disabled = false;
+                  btnLupaNome.style.opacity = '1';
+                  btnLupaNome.style.cursor = 'pointer';
+                }
                 if(fieldMatricula) fieldMatricula.removeAttribute('readonly');
               }
             };
