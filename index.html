@@ -1662,6 +1662,60 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
           </table>
         </div>
       </div>
+
+      <!-- ==================== EMISSÃO DE DOCUMENTOS ==================== -->
+      <div id="view-emissao-docs">
+        <div class="routine-bar">
+          <div>
+            <div class="crumb">Emissão de Documentos</div>
+            <h1>Emitir Documentos</h1>
+          </div>
+          <div class="flex"></div>
+          <button class="btn" onclick="voltarHome()">Voltar</button>
+        </div>
+
+        <div class="func-wrap" style="max-width:800px;margin:30px auto;">
+          <!-- Seção 1: Buscar Colaborador -->
+          <div style="padding:20px;background:#f9f9f9;border-radius:8px;margin-bottom:20px;">
+            <label style="display:block;font-weight:600;margin-bottom:10px;">Selecione um Colaborador</label>
+            <input type="text" id="ed-search-colab" class="filtro-busca" placeholder="Digite o nome ou matrícula..." style="width:100%;padding:8px;margin-bottom:10px;border:1px solid #ddd;border-radius:4px;">
+            <div id="ed-search-results" style="max-height:300px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;display:none;"></div>
+          </div>
+
+          <!-- Seção 2: Colaborador Selecionado -->
+          <div id="ed-colab-info" style="padding:20px;background:#e8f4f8;border-radius:8px;margin-bottom:20px;display:none;">
+            <div style="font-weight:600;margin-bottom:10px;">Colaborador Selecionado:</div>
+            <div style="font-size:18px;color:#005f87;margin-bottom:15px;">
+              <span id="ed-colab-nome"></span>
+            </div>
+            <table style="width:100%;font-size:14px;line-height:1.8;">
+              <tr>
+                <td style="width:50%;"><strong>Matrícula:</strong></td>
+                <td id="ed-colab-matricula"></td>
+              </tr>
+              <tr>
+                <td><strong>Função:</strong></td>
+                <td id="ed-colab-funcao"></td>
+              </tr>
+              <tr>
+                <td><strong>Admissão:</strong></td>
+                <td id="ed-colab-admissao"></td>
+              </tr>
+              <tr>
+                <td><strong>Filial/Localização:</strong></td>
+                <td id="ed-colab-filial"></td>
+              </tr>
+            </table>
+            <button class="btn" onclick="ed_limparSelecao()" style="margin-top:15px;">Limpar Seleção</button>
+          </div>
+
+          <!-- Seção 3: Documentos Disponíveis -->
+          <div id="ed-docs-section" style="display:none;">
+            <label style="display:block;font-weight:600;margin-bottom:10px;">Documentos Disponíveis</label>
+            <div id="ed-docs-list" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:15px;"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1934,6 +1988,11 @@ var AMBIENTES = [
         titulo: 'Miscelânia',
         sub: 'Selecione a rotina na lista abaixo',
         itens: ['Importação de Ativo']
+      },
+      {
+        titulo: 'Emissão de Documentos',
+        sub: 'Pesquise um colaborador e emita documentos preenchidos',
+        itens: ['Emissão de Documentos']
       }
     ]
   },
@@ -2774,7 +2833,8 @@ var ROTINAS_PRONTAS = {
   'Configuração::Cadastro de Atendentes': 'abrirCadastroAtendentes',
   'Atendimentos::Cadastro de Atendimento': 'abrirCadastroAtendimento',
   'Atendimentos::Atendimentos Agendados': 'abrirDashboardAtendimentos',
-  'Calendário::Calendário': 'abrirCalendario'
+  'Calendário::Calendário': 'abrirCalendario',
+  'Emissão de Documentos::Emissão de Documentos': 'abrirEmissaoDocumentos'
 };
 
 function acionarRotina(chave){
@@ -2841,6 +2901,7 @@ function voltarHome(){
   $('view-importacao-afastados').style.display = 'none';
   $('view-dashboard').style.display = 'none';
   $('view-solicpag').style.display = 'none';
+  $('view-emissao-docs').style.display = 'none';
 
   // Mostrar abas de dashboard novamente
   if($('viz-tab-quadro')) $('viz-tab-quadro').style.display='block';
@@ -4389,6 +4450,174 @@ function abrirFerias(){
   $('view-solicpag').style.display = 'none';
   $('view-ferias').style.display = 'flex';
   renderFeriasTable();
+}
+
+/* ================= ROTINA: EMISSÃO DE DOCUMENTOS =================
+   Permite buscar um colaborador e emitir documentos preenchidos com seus dados. */
+function abrirEmissaoDocumentos(){
+  $('view-home').style.display = 'none';
+  $('view-funcionarios').style.display = 'none';
+  $('view-rescisao').style.display = 'none';
+  $('view-ferias').style.display = 'none';
+  $('view-cad-simples').style.display = 'none';
+  $('view-importacao').style.display = 'none';
+  $('view-importacao-processos').style.display = 'none';
+  $('view-importacao-processos-arquivados').style.display = 'none';
+  $('view-importacao-medidas').style.display = 'none';
+  $('view-importacao-pagamentos').style.display = 'none';
+  $('view-dashboard').style.display = 'none';
+  $('view-solicpag').style.display = 'none';
+  $('view-emissao-docs').style.display = 'flex';
+
+  // Limpar seleção e preparar a view
+  ed_limparSelecao();
+  $('ed-search-colab').focus();
+  $('ed-search-colab').addEventListener('input', ed_buscarColaborador);
+}
+
+var ed_colaboradorSelecionado = null;
+
+function ed_buscarColaborador(){
+  var termo = $('ed-search-colab').value.toLowerCase().trim();
+  var resultDiv = $('ed-search-results');
+
+  if(!termo || termo.length < 2){
+    resultDiv.style.display = 'none';
+    return;
+  }
+
+  var colaboradores = state.colaboradores || [];
+  var matches = colaboradores.filter(function(c){
+    return (c.nome && c.nome.toLowerCase().indexOf(termo) >= 0) ||
+           (c.matricula && c.matricula.indexOf(termo) >= 0);
+  });
+
+  if(matches.length === 0){
+    resultDiv.innerHTML = '<div style="padding:10px;color:#999;">Nenhum colaborador encontrado.</div>';
+    resultDiv.style.display = 'block';
+    return;
+  }
+
+  var html = matches.map(function(c){
+    return '<div style="padding:10px;border-bottom:1px solid #eee;cursor:pointer;hover:background:#f0f0f0;" onclick="ed_selecionarColaborador(' + JSON.stringify(c).replace(/"/g, '&quot;') + ')">' +
+      '<div style="font-weight:600;">' + esc(c.nome) + '</div>' +
+      '<div style="font-size:12px;color:#666;">Matrícula: ' + esc(c.matricula) + ' | Função: ' + esc(c.funcao || c.funcaoCargo || 'N/A') + '</div>' +
+      '</div>';
+  }).join('');
+
+  resultDiv.innerHTML = html;
+  resultDiv.style.display = 'block';
+}
+
+function ed_selecionarColaborador(colaborador){
+  ed_colaboradorSelecionado = colaborador;
+
+  // Preencher as informações
+  $('ed-search-colab').value = colaborador.nome;
+  $('ed-search-results').style.display = 'none';
+
+  $('ed-colab-nome').textContent = colaborador.nome || 'N/A';
+  $('ed-colab-matricula').textContent = colaborador.matricula || 'N/A';
+  $('ed-colab-funcao').textContent = colaborador.funcao || colaborador.funcaoCargo || 'N/A';
+  $('ed-colab-admissao').textContent = colaborador.dataAdmissao || 'N/A';
+  $('ed-colab-filial').textContent = colaborador.filial || 'N/A';
+
+  $('ed-colab-info').style.display = 'block';
+
+  // Mostrar documentos disponíveis
+  ed_renderDocumentos();
+}
+
+function ed_limparSelecao(){
+  ed_colaboradorSelecionado = null;
+  $('ed-search-colab').value = '';
+  $('ed-search-results').style.display = 'none';
+  $('ed-colab-info').style.display = 'none';
+  $('ed-docs-section').style.display = 'none';
+}
+
+function ed_renderDocumentos(){
+  var docs = [
+    {id: 1, nome: 'Aceite de Pedido de Demissão - Acordo Mútuo', arquivo: 'ff4bd6d2-REGISTRO_13___ACEITE_PEDIDO_DE_DEMISS_O__ACORDO_MUTUO.doc'},
+    {id: 2, nome: 'Aceite de Pedido de Demissão - Sem Cumprimento de Aviso', arquivo: '46af5be4-REGISTRO_16___ACEITE_PEDIDO_DE_DEMISS_O__SEM_CUMPRIMENTO_AVISO.doc'},
+    {id: 3, nome: 'Aceite de Pedido de Demissão - Aviso Prévio Trabalhado', arquivo: '851a739f-REGISTRO_14___ACEITE_PEDIDO_DE_DEMISS_O__AVISO_PREVIO_TRABALHADO.doc'},
+    {id: 4, nome: 'Aceite de Pedido de Demissão - Quebra de Contrato Determinado', arquivo: 'd6cdec82-REGISTRO_15___ACEITE_PEDIDO_DE_DEMISS_O__QUEBRA_DE_CONTRATO_DETERMINADO.doc'},
+    {id: 5, nome: 'Carta de Demissão - Quebra de Contrato de Experiência', arquivo: '8881e9be-REGISTRO_21__MODELO_CARTA_DE_DEMISS_O__QUEBRA_DE_CONTRATO_DE_EXPERI_NCIA.doc'},
+    {id: 6, nome: 'Carta de Demissão - Quebra de Contrato Determinado', arquivo: 'a49d45f2-REGISTRO_22__MODELO_CARTA_DE_DEMISS_O__QUEBRA_DE_CONTRATO_DETERMINADO.doc'},
+    {id: 7, nome: 'Carta de Demissão - Término de Contrato de Experiência', arquivo: 'cc5b9f33-REGISTRO_23__CARTA_DE_DEMISS_O__TERMINO_DE_CONTRATO_DE_EXPERI_NCIA.doc'},
+    {id: 8, nome: 'Carta de Demissão - Término de Contrato Determinado', arquivo: 'c32c5c23-REGISTRO_24__CARTA_DE_DEMISS_O__TERMINO_DE_CONTRATO_DETERMINADO.doc'},
+    {id: 9, nome: 'Carta de Demissão - Término de Contrato Intermitente', arquivo: 'ed670562-REGISTRO_25__CARTA_DE_DEMISS_O__TERMINO_DE_CONTRATO_INTERMITENTE.doc'},
+    {id: 10, nome: 'Dispensa por Justa Causa', arquivo: 'c4d1a1df-MODELO_DISPENSA_POR_JUSTA_CAUSA.doc'},
+    {id: 11, nome: 'Dispensa - Aprendiz Administrativo', arquivo: 'dd353284-MODELO_DISPENSA_APRENDIZ_ADMINISTRATIVO.doc'}
+  ];
+
+  var html = docs.map(function(doc){
+    return '<div style="padding:15px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;transition:all 0.2s;" ' +
+      'onmouseover="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.1)\';" ' +
+      'onmouseout="this.style.boxShadow=\'none\';" ' +
+      'onclick="ed_emitirDocumento(' + doc.id + ', \'' + esc(doc.arquivo) + '\')">' +
+      '<div style="font-weight:600;margin-bottom:8px;color:#005f87;">' + esc(doc.nome) + '</div>' +
+      '<div style="font-size:12px;color:#999;">Clique para gerar e baixar</div>' +
+      '</div>';
+  }).join('');
+
+  $('ed-docs-list').innerHTML = html;
+  $('ed-docs-section').style.display = 'block';
+}
+
+function ed_emitirDocumento(docId, nomeArquivo){
+  if(!ed_colaboradorSelecionado){
+    toast('Selecione um colaborador primeiro.');
+    return;
+  }
+
+  var toastId = toast('⏳ Preparando documento...');
+
+  // Prepare data
+  var requestData = {
+    documentFile: nomeArquivo,
+    colaborador: {
+      nome: ed_colaboradorSelecionado.nome,
+      matricula: ed_colaboradorSelecionado.matricula,
+      funcao: ed_colaboradorSelecionado.funcao || ed_colaboradorSelecionado.funcaoCargo || '',
+      dataAdmissao: ed_colaboradorSelecionado.dataAdmissao || '',
+      filial: ed_colaboradorSelecionado.filial || ''
+    }
+  };
+
+  // Call API to fill document
+  fetch('/api/emit-document', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(requestData)
+  })
+  .then(function(response){
+    if (!response.ok) {
+      return response.json().then(function(err){
+        throw new Error(err.error || 'Erro ao gerar documento');
+      });
+    }
+    return response.blob();
+  })
+  .then(function(blob){
+    // Create download link
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = nomeArquivo.replace(/^[a-f0-9]+-/, '');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast('✓ Documento baixado com sucesso!');
+  })
+  .catch(function(error){
+    console.error('Error:', error);
+    toast('✗ Erro ao gerar documento: ' + error.message);
+  });
 }
 
 function renderRescisaoTable(){
