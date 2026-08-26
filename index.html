@@ -2867,6 +2867,7 @@ var ROTINAS_PRONTAS = {
   'Cadastros::Beneficiários': 'abrirBeneficiarios',
   'Cadastros::Exames (ASO)': 'abrirExamesOcupacionais',
   'Cadastros::Usuários': 'abrirUsuarios',
+  'Cadastros::Centros de Custo': 'abrirCentrosCusto',
   'Medidas Disciplinares::Medidas Disciplinares': 'abrirMedidasDisciplinares',
   'Medidas Disciplinares::Importar Medidas Disciplinares': 'abrirImportacaoMedidasDisciplinares',
   'Pagamentos::Pagamentos': 'abrirPagamentosJuridico',
@@ -3448,6 +3449,36 @@ var CADASTROS_SIMPLES = {
       { chave:'data_proximo_aso', label:'Data do Próximo ASO', tipo:'daterange' }
     ]
   },
+  dp_centros_custo: {
+    ambiente: 'Departamento Pessoal',
+    secao: 'Cadastros',
+    titulo: 'Centros de Custo',
+    tabela: 'dp_centros_custo',
+    instrucao: 'Cadastre e acompanhe os Centros de Custo (CC) da empresa, importados da planilha de Centros de Custo. Clique numa linha da tabela para editar tudo, ou mude Status/Classificação direto na lista.',
+    campoBusca: ['codigo','descricao'],
+    campos: [
+      { chave:'codigo', label:'C. Custo', tipo:'text', obrigatorio:true },
+      { chave:'descricao', label:'Descrição', tipo:'text', obrigatorio:true, largura:'full' },
+      { chave:'classe', label:'Classe', tipo:'select', opcoes:['Analitico','Sintetico'] },
+      { chave:'status', label:'Status', tipo:'select', opcoes:['ATIVO','INATIVO'] },
+      { chave:'classificacao', label:'Classificação', tipo:'select', opcoes:['servico','Administrativo'] },
+      { chave:'cond_normal', label:'Cond. Normal', tipo:'select', opcoes:['Nenhum','Despesa','Receita'] },
+      { chave:'nr_contrato', label:'Nº Contrato', tipo:'text' },
+      { chave:'dt_fim_exist', label:'Data Fim Existência', tipo:'date' }
+    ],
+    colunasTabela: ['codigo','descricao','classe','classificacao','cond_normal','nr_contrato','status'],
+    colunasInlineSelect: {
+      status: ['ATIVO','INATIVO'],
+      classificacao: ['servico','Administrativo']
+    },
+    colunasStatusColorido: ['status'],
+    filtrosColuna: [
+      { chave:'status', label:'Status', tipo:'select' },
+      { chave:'classe', label:'Classe', tipo:'select' },
+      { chave:'classificacao', label:'Classificação', tipo:'select' },
+      { chave:'cond_normal', label:'Cond. Normal', tipo:'select' }
+    ]
+  },
   rec_atendentes: {
     ambiente: 'Recepção',
     secao: 'Atendimentos',
@@ -3511,6 +3542,7 @@ function abrirBeneficiarios(){ abrirCadSimples('ben_beneficiarios'); }
 function abrirExamesOcupacionais(){ abrirCadSimples('med_exames'); }
 function abrirAfastados(){ abrirCadSimples('med_afastados'); }
 function abrirControleASOs(){ abrirCadSimples('med_controle_asos'); }
+function abrirCentrosCusto(){ abrirCadSimples('dp_centros_custo'); }
 function abrirCadastroAtendentes(){ abrirCadSimples('rec_atendentes'); }
 function abrirCadastroAtendimento(){ abrirCadSimples('rec_atendimentos'); }
 function abrirUsuarios(){
