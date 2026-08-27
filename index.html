@@ -3526,8 +3526,8 @@ var CADASTROS_SIMPLES = {
     },
     colunasStatusColorido: ['status'],
     filtrosColuna: [
+      { chave:'data_agendamento', label:'Dia', tipo:'diaunico', padraoHoje:true },
       { chave:'status', label:'Status', tipo:'select' },
-      { chave:'data_agendamento', label:'Data Agendamento', tipo:'daterange' },
       { chave:'quem_atenderá', label:'Atendente', tipo:'select' }
     ]
   }
@@ -3570,6 +3570,16 @@ function abrirCadSimples(chave){
   stateCadSimples.dados = [];
   stateCadSimples.editandoId = null;
   stateCadSimples.filtros = {};
+  /* Filtro "diaunico" com padraoHoje:true já abre mostrando só o dia de
+     hoje (ver Recepção > Cadastro de Atendimento), em vez da lista inteira. */
+  if(cfg.filtrosColuna){
+    cfg.filtrosColuna.forEach(function(fc){
+      if(fc.tipo === 'diaunico' && fc.padraoHoje){
+        var hoje = dataISOHoje();
+        stateCadSimples.filtros[fc.chave] = { de: hoje, ate: hoje };
+      }
+    });
+  }
 
   $('view-home').style.display = 'none';
   $('view-funcionarios').style.display = 'none';
@@ -3668,6 +3678,17 @@ function renderCsFiltroColunas(cfg){
         + '<span class="filtro-data-lbl">até</span>'
         + '<input type="date" class="filtro-data" value="' + esc(r.ate || '') + '" onchange="csFiltroRangeChange(\'' + fc.chave + '\',\'ate\',this.value)">';
     }
+    if(fc.tipo === 'diaunico'){
+      /* Calendário de um dia só (em vez de De/Até) — pensado pra Recepção
+         (Cadastro de Atendimento): filtra pra mostrar só os registros
+         daquele dia específico. Reaproveita o mesmo formato {de,ate} do
+         filtro "daterange" (com de === ate) pra não precisar mexer na
+         lógica de filtragem em renderCadSimplesTabela(). */
+      var rd = f[fc.chave] || {};
+      var valorDia = rd.de || rd.ate || '';
+      return '<span class="filtro-data-lbl">&#128197; ' + esc(fc.label) + ':</span>'
+        + '<input type="date" class="filtro-data" value="' + esc(valorDia) + '" onchange="csFiltroDiaUnicoChange(\'' + fc.chave + '\',this.value)">';
+    }
     if(fc.tipo === 'numrange'){
       var rn = f[fc.chave] || {};
       return '<span class="filtro-data-lbl">' + esc(fc.label) + ':</span>'
@@ -3681,6 +3702,12 @@ function renderCsFiltroColunas(cfg){
 
 function csFiltroSelectChange(chave, valor){
   if(valor){ stateCadSimples.filtros[chave] = valor; }
+  else { delete stateCadSimples.filtros[chave]; }
+  renderCadSimplesTabela();
+}
+
+function csFiltroDiaUnicoChange(chave, valor){
+  if(valor){ stateCadSimples.filtros[chave] = { de: valor, ate: valor }; }
   else { delete stateCadSimples.filtros[chave]; }
   renderCadSimplesTabela();
 }
@@ -8440,6 +8467,16 @@ function parseDateISO(s){
   return isNaN(dt.getTime()) ? null : dt;
 }
 
+/* Data de hoje no formato ISO (YYYY-MM-DD), em horário local — usada pra
+   pré-selecionar "hoje" nos calendários de dia único (Recepção >
+   Cadastro de Atendimento / Atendimentos Agendados). */
+function dataISOHoje(){
+  var d = new Date();
+  var mes = String(d.getMonth() + 1).padStart(2, '0');
+  var dia = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + mes + '-' + dia;
+}
+
 var dashProvisoesGranularidade = 'mes'; // 'dia' | 'semana' | 'mes' | 'ano'
 
 /* Gera uma janela fixa de períodos terminando hoje, no estilo já usado no
@@ -9645,6 +9682,12 @@ function escapeHtml(text){
 }
 
 /* ====== Dashboard Recepção - Atendimentos Agendados ====== */
+/* Dia selecionado no calendário do dashboard de Atendimentos Agendados (ver
+   renderDashboardAtendimentos) — sempre reaberto em "hoje" quando se entra
+   na tela pelo menu, mas preservado entre re-renders disparados pela troca
+   de data (dashAtendDiaChange), pra não voltar pra hoje sozinho. */
+var stateDashAtendDia = null;
+
 function abrirDashboardAtendimentos(){
   $('view-home').style.display='none'; $('view-funcionarios').style.display='none'; $('view-rescisao').style.display='none'; $('view-ferias').style.display='none'; $('view-importacao').style.display='none'; $('view-importacao-processos').style.display='none'; $('view-importacao-processos-arquivados').style.display='none'; $('view-importacao-medidas').style.display='none'; $('view-importacao-pagamentos').style.display='none'; $('view-solicpag').style.display='none'; $('view-cad-simples').style.display='none'; $('view-importacao-pericias').style.display='none'; $('view-importacao-afastados').style.display='none';
   $('view-dashboard').style.display='flex';
@@ -9657,6 +9700,16 @@ function abrirDashboardAtendimentos(){
   $('dash-crumb').textContent = 'Recepção > Atendimentos';
   $('dash-titulo').textContent = 'Atendimentos Agendados';
   $('viz-conteudo').innerHTML = '<div style="padding:40px;text-align:center;">Carregando dashboard...</div>';
+  stateDashAtendDia = dataISOHoje();
+  renderDashboardAtendimentos();
+}
+
+/* Troca do calendário no topo do card "Agendamentos do Dia" — guarda o dia
+   escolhido e refaz o dashboard inteiro (mais simples e seguro do que tentar
+   refiltrar só a tabela na hora, e o custo de rebuscar no Supabase aqui é
+   baixo). */
+function dashAtendDiaChange(valor){
+  stateDashAtendDia = valor || dataISOHoje();
   renderDashboardAtendimentos();
 }
 
@@ -9666,70 +9719,68 @@ function renderDashboardAtendimentos(){
   sbClient.from('rec_atendimentos').select('*').then(function(result){
     var atendimentos = result.data || [];
 
-    // ---- Contagem por status ----
+    // ---- Dia escolhido no calendário — tudo abaixo (KPIs, gráficos e
+    // tabela) é calculado só em cima dos agendamentos desse dia, pra não
+    // ficar um "Total de Agendamentos" contando o cadastro inteiro enquanto
+    // a tabela logo abaixo mostra só 1 ou 2 registros do dia selecionado. */
+    var diaSelecionado = stateDashAtendDia || dataISOHoje();
+    var agendDoDia = atendimentos
+      .filter(function(a){ return a.data_agendamento === diaSelecionado; })
+      .sort(function(a,b){ return (a.horario_comparecimento||'').localeCompare(b.horario_comparecimento||''); });
+
+    // ---- Contagem por status/atendente, já restrita ao dia selecionado ----
     var porStatus = {};
     var porAtendente = {};
-    var hoje = new Date();
-    var atendimentosHoje = 0;
-    var atendimentosProximosSete = 0;
-    var porDia = {};
-    var porSemana = {};
 
-    atendimentos.forEach(function(a){
-      var status = String(a.status||'Agendado').trim();
+    agendDoDia.forEach(function(a){
+      var status = String(a.status||'AGENDADO').trim();
       porStatus[status] = (porStatus[status]||0) + 1;
 
       var atendente = String(a.quem_atenderá||'Não informado').trim();
       porAtendente[atendente] = (porAtendente[atendente]||0) + 1;
-
-      // Contar atendimentos por dia
-      if(a.data_agendamento){
-        var dataAgend = parseDateISO(a.data_agendamento);
-        if(dataAgend){
-          var diaChave = a.data_agendamento;
-          porDia[diaChave] = (porDia[diaChave]||0) + 1;
-
-          // Contagem para hoje
-          if(dataAgend.toDateString() === hoje.toDateString()) atendimentosHoje++;
-
-          // Contagem para próximos 7 dias
-          var diff = Math.ceil((dataAgend - hoje) / (1000 * 60 * 60 * 24));
-          if(diff >= 0 && diff <= 7) atendimentosProximosSete++;
-
-          // Contar por semana (primeira semana = semana atual)
-          var diffSemana = Math.floor(diff / 7);
-          if(diffSemana >= 0) {
-            var semanaChave = 'Semana ' + (diffSemana + 1);
-            porSemana[semanaChave] = (porSemana[semanaChave]||0) + 1;
-          }
-        }
-      }
     });
+
+    /* Soma um status por palavra-chave, ignorando maiúsculas/acentos — os
+       valores gravados são sempre 'AGENDADO'/'COMPARECEU'/'NÃO COMPARECEU'/
+       'CANCELADO' (ver rec_atendimentos.campos), mas cadastros antigos podem
+       ter vindo com grafia diferente. */
+    function qtdStatus(regex){
+      var total = 0;
+      Object.keys(porStatus).forEach(function(k){
+        var norm = k.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+        if(regex.test(norm)) total += porStatus[k];
+      });
+      return total;
+    }
 
     var porStatusData = Object.keys(porStatus).map(function(k){ return {label:k, value: porStatus[k]}; }).sort(function(a,b){ return b.value - a.value; });
     var porAtendendeData = Object.keys(porAtendente).map(function(k){ return {label:k, value: porAtendente[k]}; }).sort(function(a,b){ return b.value - a.value; });
-    var porSemanaData = Object.keys(porSemana).map(function(k){ return {label:k, value: porSemana[k]}; });
 
-    // ---- KPI Principal ----
+    // ---- Agendamentos por horário (dia selecionado) ----
+    var porHorario = {};
+    agendDoDia.forEach(function(a){
+      var h = String(a.horario_comparecimento || 'Sem horário').trim();
+      porHorario[h] = (porHorario[h]||0) + 1;
+    });
+    var porHorarioData = Object.keys(porHorario).sort().map(function(k){ return {label:k, value: porHorario[k]}; });
+
+    // ---- KPI Principal (tudo relativo ao dia selecionado no calendário) ----
     var kpis = vizKpiRow([
-      {label:'Total de Agendamentos', value: fmtNum(atendimentos.length)},
-      {label:'Hoje', value: fmtNum(atendimentosHoje)},
-      {label:'Próximos 7 dias', value: fmtNum(atendimentosProximosSete)},
-      {label:'Agendados', value: fmtNum(porStatus['Agendado']||0)}
+      {label:'Agendamentos do Dia', value: fmtNum(agendDoDia.length)},
+      {label:'Compareceram', value: fmtNum(qtdStatus(/^COMPARECEU$/))},
+      {label:'Não Compareceram', value: fmtNum(qtdStatus(/NAO\s+COMPARECEU/))},
+      {label:'Agendados', value: fmtNum(qtdStatus(/^AGENDADO$/))}
     ]);
 
-    // ---- Cards com gráficos ----
+    // ---- Cards com gráficos (também restritos ao dia selecionado) ----
     var html = kpis + '<div class="viz-grid">'
-      + vizCard('Atendimentos por Status', 'Distribuição dos status de atendimento', vizBarChart(porStatusData, statusAtendimentoCorGrafico), porStatusData.map(function(d){return [d.label,d.value];}), ['Status','Quantidade'], 'card-atend-status')
-      + vizCard('Atendimentos por Atendente', 'Carga de trabalho por atendente', vizBarChart(porAtendendeData, corAtendente), porAtendendeData.map(function(d){return [d.label,d.value];}), ['Atendente','Quantidade'], 'card-atend-ate')
-      + vizCard('Atendimentos por Semana', 'Distribuição ao longo das semanas', vizBarChart(porSemanaData), porSemanaData.map(function(d){return [d.label,d.value];}), ['Período','Quantidade'], 'card-atend-sem')
+      + vizCard('Atendimentos por Status', 'Distribuição dos status de atendimento no dia', vizBarChart(porStatusData, statusAtendimentoCorGrafico), porStatusData.map(function(d){return [d.label,d.value];}), ['Status','Quantidade'], 'card-atend-status')
+      + vizCard('Atendimentos por Atendente', 'Carga de trabalho por atendente no dia', vizBarChart(porAtendendeData, corAtendente), porAtendendeData.map(function(d){return [d.label,d.value];}), ['Atendente','Quantidade'], 'card-atend-ate')
+      + vizCard('Atendimentos por Horário', 'Distribuição ao longo do dia', vizBarChart(porHorarioData), porHorarioData.map(function(d){return [d.label,d.value];}), ['Horário','Quantidade'], 'card-atend-hor')
       + '</div>';
 
-    // ---- Tabela de próximos agendamentos ----
-    var proximosAgend = atendimentos
-      .filter(function(a){ return a.data_agendamento; })
-      .sort(function(a,b){ return (a.data_agendamento||'').localeCompare(b.data_agendamento||''); })
-      .slice(0, 15);
+    // ---- Tabela de agendamentos do dia escolhido no calendário ----
+    var proximosAgend = agendDoDia;
 
     // Obter lista única de atendentes
     var atendentesList = {};
@@ -9738,10 +9789,16 @@ function renderDashboardAtendimentos(){
     });
     var atendentesSorted = Object.keys(atendentesList).sort();
 
+    var capDia = proximosAgend.length + (proximosAgend.length === 1 ? ' agendado em ' : ' agendados em ') + fmtBR(diaSelecionado);
     var agendHtml = '<div class="viz-grid full"><div class="viz-card">'
-      + '<div class="viz-card-head"><h3>Próximos Agendamentos</h3>'
-      + '<div class="cap">Próximos 15 agendados</div>'
-      + '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">'
+      + '<div class="viz-card-head">'
+      + '<div><h3>Agendamentos do Dia</h3><div class="cap">'+esc(capDia)+'</div></div>'
+      + '<div style="display:flex;align-items:center;gap:6px;">'
+      + '<span style="font-size:13px;">&#128197;</span>'
+      + '<input type="date" id="dashAtendDia" value="'+esc(diaSelecionado)+'" onchange="dashAtendDiaChange(this.value)" style="padding:6px 8px;border:1px solid #ccc;border-radius:3px;font-size:13px;">'
+      + '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:10px;margin:10px 16px 0;flex-wrap:wrap;">'
       + '<select id="filterAtendente" class="cs-select" style="padding:6px 8px;border:1px solid #ccc;border-radius:3px;font-size:13px;">'
       + '<option value="">Todos os Atendentes</option>';
     atendentesSorted.forEach(function(at){
@@ -9750,11 +9807,10 @@ function renderDashboardAtendimentos(){
     agendHtml += '</select>'
       + '<button id="btnExportPdf" class="cs-btn" style="padding:6px 12px;background:#0369a1;color:white;border:none;border-radius:3px;cursor:pointer;font-size:13px;font-weight:bold;">📄 Exportar PDF</button>'
       + '</div>'
-      + '</div>'
       + '<div class="vz-body">';
 
     if(proximosAgend.length === 0){
-      agendHtml += '<div class="vz-empty">Nenhum agendamento cadastrado.</div>';
+      agendHtml += '<div class="vz-empty">Nenhum agendamento para '+esc(fmtBR(diaSelecionado))+'.</div>';
     } else {
       agendHtml += '<table class="vz-table" id="tabelaAgendamentos"><thead><tr>'
         + '<th>Data</th><th>Hora</th><th>Colaborador</th><th>Matrícula</th><th>Quem Atenderá</th><th>Status</th><th>Observação</th></tr></thead><tbody>';
@@ -9805,9 +9861,8 @@ function renderDashboardAtendimentos(){
       btnExport.addEventListener('click', function(){
         var filtroAtendente = el.querySelector('#filterAtendente').value;
         var tabelaAgendamentos = atendimentos
-          .filter(function(a){ return a.data_agendamento; })
-          .sort(function(a,b){ return (a.data_agendamento||'').localeCompare(b.data_agendamento||''); })
-          .slice(0, 15);
+          .filter(function(a){ return a.data_agendamento === diaSelecionado; })
+          .sort(function(a,b){ return (a.horario_comparecimento||'').localeCompare(b.horario_comparecimento||''); });
 
         if(filtroAtendente){
           tabelaAgendamentos = tabelaAgendamentos.filter(function(a){
